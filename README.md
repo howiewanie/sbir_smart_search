@@ -28,12 +28,6 @@ To change the model:
 - Experiment with different models based on your specific use case
 - Consider model performance, computational requirements, and accuracy
 
-## 🚀 Prerequisites
-- Python 3.9+
-- Qdrant vector database
-- 8GB+ RAM recommended
-- Optional: GPU for faster processing
-
 ## 📊 SBIR Smart Search Process Flow
 
 ![SBIR Smart Search Process Flow](sbir_smart_search_flow.png)
@@ -51,6 +45,12 @@ The ranking algorithm considers:
 - 10% Award Recency
 - 90% Similarity Score (using Cosine Similarity)
 
+## 🚀 Prerequisites
+- Python 3.9+
+- Qdrant vector database
+- 8GB+ RAM recommended
+- Optional: GPU for faster processing
+  
 ## 🛠️ Installation
 
 1. Clone the repository:
