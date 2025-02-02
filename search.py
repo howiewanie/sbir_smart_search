@@ -20,14 +20,7 @@ class SBIRSearch:
             self.client = QdrantClient(qdrant_host, port=qdrant_port)
             
             print("Loading embedding model...")
-            self.model = 
-# ===========================
-# Choose the language model you want to use and replace 'sentence-transformers/all-MiniLM-L6-v2' if desired.
-# The current default model is ultralightweight and gives decent performance for general-purpose searches.
-# Examples for alternatives: 'allenai/scibert_scivocab_uncased', 'BAAI/bge-base-en-v1.5'
-# ===========================
-model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-
+            self.model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
             
             # Make results directory configurable
             self.results_dir = results_dir
@@ -90,11 +83,6 @@ model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         # If no directory works, raise an exception
         raise Exception("Could not find a writable directory for results")
 
-    # Rest of the code remains the same as the original script...
-    # (Copy the remaining methods clean_text, clean_company_name, find_similar_company, 
-    # calculate_score, display_distribution, search, display_results_page, export_results)
-    # and the main() function
-
     def clean_text(self, text):
         """Thoroughly clean and normalize text"""
         if not text or not isinstance(text, str):
@@ -112,7 +100,119 @@ model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         # Strip leading/trailing whitespace
         return text.strip()
 
-    # Remaining methods would be copied from the original script...
+    def search(self, query_text, is_company_search=False, max_results=50):
+        """Perform search with different mechanisms for company vs technology search"""
+        try:
+            current_year = datetime.now().year
+
+            if is_company_search:
+                # Company search - scroll through all awards
+                results = self.client.scroll(
+                    collection_name="sbir_awards",
+                    with_payload=True,
+                    limit=10000
+                )[0]
+                
+                processed_results = []
+                
+                # Multiple variations for matching
+                query_cleaned = query_text.lower()
+                query_words = query_cleaned.split()
+                
+                for r in results:
+                    # Get original company name and various matching variants
+                    company_name = r.payload['company']
+                    company_lower = company_name.lower()
+                    
+                    # Comprehensive matching conditions
+                    match_conditions = [
+                        # Exact match
+                        query_cleaned == company_lower,
+                        
+                        # Contains full query
+                        query_cleaned in company_lower,
+                        
+                        # Matches any word in the company name
+                        any(word in company_lower for word in query_words),
+                        
+                        # Partial word matches
+                        any(
+                            company_lower.startswith(word) or 
+                            company_lower.endswith(word) or 
+                            word in company_lower
+                            for word in query_words
+                        )
+                    ]
+                    
+                    # If any match condition is true
+                    if any(match_conditions):
+                        # Calculate recency factor (10% of score)
+                        year = r.payload['award_year']
+                        recency_factor = max(0, 1 - (current_year - year) * 0.05)
+                        
+                        # Combine match relevance with recency
+                        # 90% match relevance, 10% recency
+                        relevance_score = 1.0  # Default for matched results
+                        final_score = (0.9 * relevance_score) + (0.1 * recency_factor)
+                        
+                        processed_results.append({
+                            'score': final_score,
+                            'similarity': relevance_score,
+                            'year': year,
+                            'company': company_name,
+                            'title': r.payload['award_title'],
+                            'abstract': r.payload['abstract'],
+                            'amount': r.payload['award_amount'],
+                            'contract': r.payload['contract'],
+                            'branch': r.payload['branch']
+                        })
+                
+                # Sort results by final score (descending)
+                processed_results.sort(key=lambda x: x['score'], reverse=True)
+                
+                return processed_results[:max_results]
+            
+            # Technology/topic search
+            else:
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=DeprecationWarning)
+                    semantic_results = self.client.search(
+                        collection_name="sbir_awards",
+                        query_vector=self.model.encode(query_text, normalize_embeddings=True).tolist(),
+                        limit=max_results * 2 if max_results else 10000
+                    )
+                
+                processed_results = []
+                for r in semantic_results:
+                    # Calculate recency factor (10% of score)
+                    year = r.payload['award_year']
+                    recency_factor = max(0, 1 - (current_year - year) * 0.05)
+                    
+                    # Combine semantic similarity with recency
+                    # 90% semantic score, 10% recency
+                    final_score = (0.9 * r.score) + (0.1 * recency_factor)
+                    
+                    processed_results.append({
+                        'score': final_score,
+                        'similarity': r.score,
+                        'year': year,
+                        'company': r.payload['company'],
+                        'title': r.payload['award_title'],
+                        'abstract': r.payload['abstract'],
+                        'amount': r.payload['award_amount'],
+                        'contract': r.payload['contract'],
+                        'branch': r.payload['branch']
+                    })
+                
+                # Sort by final score
+                processed_results.sort(key=lambda x: x['score'], reverse=True)
+                return processed_results[:max_results]
+
+        except Exception as e:
+            print(f"Error during search: {str(e)}")
+            traceback.print_exc()
+            return []
 
 def main():
     try:
