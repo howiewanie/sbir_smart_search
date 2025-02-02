@@ -34,6 +34,23 @@ To change the model:
 - 8GB+ RAM recommended
 - Optional: GPU for faster processing
 
+## 📊 SBIR Smart Search Process Flow
+
+![SBIR Smart Search Process Flow](sbir_smart_search_flow.png)
+
+This diagram illustrates the end-to-end process of the SBIR Smart Search system:
+
+1. **Public Data**: Ingests data from the sbir.gov archive.
+2. **Analyze & Vectorize**: Processes and vectorizes the data using the all-MiniLM-L6-v2 model.
+3. **Store Vectors**: Saves the resulting vectors in the Qdrant Vector DB.
+4. **Query Input**: Accepts user search queries.
+5. **Search & Rank**: Performs similarity search and ranks results.
+6. **Export to CSV**: Exports search results to a CSV file.
+
+The ranking algorithm considers:
+- 10% Award Recency
+- 90% Similarity Score (using Cosine Similarity)
+
 ## 🛠️ Installation
 
 1. Clone the repository:
