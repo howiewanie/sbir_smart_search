@@ -60,12 +60,12 @@ docker run -p 6333:6333 qdrant/qdrant
 1. Prepare your SBIR/STTR awards CSV
 2. Run indexing:
 ```bash
-python local_indexer.py
+python indexer.py
 ```
 
 3. Start searching:
 ```bash
-python optimized_search.py
+python search.py
 ```
 
 ## 🔍 Search Capabilities
