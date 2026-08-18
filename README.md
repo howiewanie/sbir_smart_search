@@ -7,7 +7,7 @@ Ask for "lightweight batteries for small drones" and you get awards about energy
 power systems for UAVs, even when they never use those words. Everything runs locally:
 one command downloads the data and builds the index, a second starts the web UI.
 
-![SBIR Smart Search process flow](sbir_smart_search_flow.png)
+![SBIR Smart Search](docs/screenshot.png)
 
 ## Quick start
 
@@ -69,6 +69,15 @@ python -m sbir search "luna innovations" --mode company --sort amount
 Worth knowing: SBIR and STTR are small-business programs, so the large primes are not in
 here. Searching for Lockheed or Raytheon correctly returns nothing. The most prolific
 awardees are firms like Physical Optics, Physical Sciences, Creare and Luna Innovations.
+
+## How it works
+
+![Process flow](sbir_smart_search_flow.png)
+
+The award CSV is normalised into a flat table, the title and abstract of each award are
+embedded into a 384-dimension vector, and those vectors go into Qdrant alongside the
+metadata used for filtering. A query is embedded the same way and compared by cosine
+similarity, then the shortlist is re-scored before it reaches you.
 
 ## How ranking works
 

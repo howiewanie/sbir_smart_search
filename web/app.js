@@ -93,6 +93,27 @@ function renderNotice(title, body) {
   el("hits").innerHTML = `<div class="notice"><h3>${title}</h3>${body}</div>`;
 }
 
+function renderEmpty(query, mode) {
+  if (mode === "company" && query) {
+    // Usually this is either a typo or one of the big primes, which are not
+    // eligible for these programs in the first place.
+    renderNotice(
+      "No company matched",
+      `<p>Nothing in the database is named like <b>${escapeHtml(query)}</b>.</p>
+       <p>SBIR and STTR fund small businesses, so large prime contractors never
+       appear. Try a shorter form of the name, or switch back to
+       <b>Topic</b> to search by subject instead.</p>`
+    );
+  } else if (!query) {
+    renderNotice(
+      "Nothing to show",
+      "<p>These filters exclude every award. Try clearing one.</p>"
+    );
+  } else {
+    renderNotice("No matches", "<p>Try broader wording or clear a filter.</p>");
+  }
+}
+
 function render() {
   el("hits").innerHTML = state.hits.map((hit, i) => renderHit(hit, i + 1)).join("");
   el("load-more").hidden = state.hits.length >= state.total;
@@ -118,7 +139,7 @@ async function runSearch({ append = false } = {}) {
     state.total = data.total;
 
     if (!state.hits.length) {
-      renderNotice("No matches", "<p>Try broader wording or clear a filter.</p>");
+      renderEmpty(el("query").value.trim(), el("mode").value);
       el("load-more").hidden = true;
       el("summary").innerHTML = "No results.";
     } else {

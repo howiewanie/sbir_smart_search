@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import math
 import time
 from datetime import timedelta
 
@@ -102,7 +100,3 @@ def build(since: int | None = None, limit: int | None = None,
           f"{facets['totals']['companies']:,} companies, "
           f"${facets['totals']['funding'] / 1e9:.1f}B awarded")
     return meta
-
-
-def estimate_minutes(count: int, rate: float = 200.0) -> float:
-    return math.ceil(count / rate / 60)

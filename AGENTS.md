@@ -2,61 +2,68 @@
 
 ## Cursor Cloud specific instructions
 
-SBIR Smart Search is a **command-line** semantic search tool (no web/GUI). Two entry
-points read/write a Qdrant vector database:
+SBIR Smart Search is a semantic search engine over the public SBIR/STTR award database.
+It is a single Python service: a FastAPI app (`sbir/api.py`) that serves both a JSON API
+and the static front end in `web/`. There is no build step and no JavaScript toolchain.
 
-- `indexer.py` — embeds SBIR/STTR award CSVs and upserts vectors into Qdrant.
-- `search.py` — embeds a query and runs semantic (technology) or company search.
+Commands, configuration and architecture are documented in `README.md` — read it first
+rather than rediscovering the CLI. The notes below only cover things that are specific to
+this VM or that are easy to get wrong.
 
-`config.py` holds the model name (`sentence-transformers/all-MiniLM-L6-v2`), Qdrant
-host/port, collection name (`sbir_awards`), and CSV column mappings.
+### Environment
 
-### Environment (already provisioned by the update script)
+- The virtualenv is at `/workspace/.venv`, built with **Python 3.11**, and the update
+  script keeps it current. Run everything through `./.venv/bin/python`.
+- 3.11 is deliberate. The current `requirements.txt` works on 3.10+, but the pre-rewrite
+  version pinned `torch<2.2`, which has no 3.12 wheels. Staying on 3.11 keeps the update
+  script working on any branch. Do not "upgrade" the venv to 3.12 without checking which
+  `requirements.txt` the branch actually has.
 
-- Use **Python 3.11** (installed via the deadsnakes PPA). The pinned deps in
-  `requirements.txt` (`torch<2.2.0`) have **no Python 3.12 wheels**, so 3.11 is required.
-- Dependencies live in the repo-local virtualenv at `/workspace/.venv`. Run everything
-  with `./.venv/bin/python ...`.
-- `requirements.txt` is under-pinned, which pulls incompatible transitive versions.
-  The update script pins two compat versions on top of it (do not "upgrade" these):
-  - `transformers==4.40.2` — newer transformers use a pytree API missing in `torch 2.1.2`.
-  - `qdrant-client==1.11.3` — client >=1.12 removed `QdrantClient.search()`, which
-    `search.py` still calls. 1.11.3 keeps `.search()` and works with the 1.19 server.
-- The embedding model is cached under `~/.cache/huggingface` (first load downloads it
-  from huggingface.co; egress is available).
+### Data and index live in `data/` and are NOT in git
 
-### Qdrant vector DB (must be started per boot; NOT in the update script)
+`data/` is gitignored and already populated in this VM:
 
-There is no Docker in this VM. The native Qdrant **v1.19.0** binary is installed at
-`/opt/qdrant/qdrant`. Start it (defaults to `localhost:6333`) in a tmux terminal, using a
-runtime dir for its `./storage`:
+- `data/award_data.csv` — the 350 MB SBIR.gov export
+- `data/qdrant/` — the embedded vector index, ~1.2 GB
+- `data/index_meta.json`, `data/companies.json` — index metadata and the company lookup
 
-```bash
-tmux -f /exec-daemon/tmux.portal.conf new-session -d -s qdrant -c /workspace/.qdrant-runtime -- bash -lc '/opt/qdrant/qdrant'
-curl -fsS http://localhost:6333/healthz   # -> "healthz check passed"
+The full index is already built (201,204 awards, 1983-2024). **Rebuilding takes about
+23 minutes**, so do not run `python -m sbir index` casually. Use `--limit` or `--since`
+when you only need something to test against.
+
+If you change how documents are embedded or what goes into the payload, the existing
+index becomes stale and you do have to rebuild. `data/companies.json` maps company name
+to point ids and must stay consistent with the index; it is written by `sbir.indexer` at
+build time, and it can be regenerated on its own (point ids are deterministic) with:
+
+```python
+from sbir import dataset, indexer, store
+store.save_companies(indexer.company_map(dataset.load()))
 ```
 
-`indexer.py`/`search.py` fail with a connection error if Qdrant is not running.
+### Embedded Qdrant takes an exclusive lock
 
-### Running / smoke-testing
+Only one process may open `data/qdrant` at a time. If `serve` is running, a second
+command that touches the index (`search`, `index`, `status` on the collection) fails with
+"already accessed by another instance of Qdrant client". Stop the server first. Long-lived
+services here are run under tmux, so kill the `sbir-web` session before doing index work
+and restart it afterwards.
 
-- `search.py` requires the `sbir_awards` collection to already be populated (run indexing
-  first), otherwise it raises "collection not found".
-- A local end-to-end smoke test lives at `dev_smoke_test.py` (gitignored, kept in the VM):
-  it indexes `sample_data/sample_awards.csv` and exercises the real `SBIRSearch.search()`
-  path for both a technology and a company query:
-  `./.venv/bin/python dev_smoke_test.py` → prints `SMOKE TEST: PASS`.
+### Performance characteristics worth preserving
 
-### Known pre-existing code bugs (out of scope for environment setup — not fixed here)
+Embedded Qdrant evaluates filters point by point in Python, which measured roughly five
+times the cost of an unfiltered scan (2.5 s versus 0.45 s). `SearchEngine._semantic_hits`
+therefore pulls a wide unfiltered pool and filters in Python, only falling back to a
+filtered vector query when the pool runs dry. This is exact, not an approximation, and it
+was verified against ground-truth filtered queries. Keep the fallback if you touch it.
 
-- `indexer.py` has a **syntax error** near line 67 (`self.model =` is left dangling,
-  followed by a stray module-level `model = SentenceTransformer(...)`), so
-  `python indexer.py` will not run until fixed.
-- `search.py`'s interactive `main()` calls `display_distribution`, `display_results_page`,
-  and `export_results`, which are **not defined** on `SBIRSearch`; the connection and the
-  core `search()` method work, but the interactive result display crashes.
+Embedding uses `max_seq_length=128` rather than the model's 256 default; that is what
+takes a full index build from ~72 minutes down to ~23.
 
-### No lint config or automated test suite
+### Testing
 
-The repo ships no linter config and no unit/integration tests. Validate changes by running
-the smoke test above (and, once the bugs above are fixed, the `indexer.py`/`search.py` CLIs).
+There is no unit test suite. Validate changes by running the app and exercising the API.
+A regression script covering the endpoints, every filter, sorting, pagination and CSV
+export is kept outside the repo at `/tmp/regression.py` in this VM; it is short enough to
+rewrite from `README.md`'s API table if it is missing. `./.venv/bin/ruff check sbir/` is
+available for a quick lint (ruff is installed in the venv but is not a project dependency).
