@@ -8,8 +8,7 @@ No API key. No account. Clone, install, run.
 
 ![Intelligence report](docs/report.png)
 
-[Watch the 2026 walkthrough](docs/sbir_search_2026.mp4) (short MP4 you can also
-upload to YouTube).
+[Watch the 2026 walkthrough](docs/sbir_search_2026.mp4) 
 
 ## Quick start
 
