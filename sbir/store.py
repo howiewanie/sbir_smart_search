@@ -99,18 +99,42 @@ def retrieve(client: QdrantClient, ids: list[int]) -> list[models.Record]:
     )
 
 
+def save_json(path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload))
+
+
+def load_json(path, default):
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return default
+
+
 def save_companies(mapping: dict[str, list[int]]) -> None:
-    config.COMPANIES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    config.COMPANIES_PATH.write_text(json.dumps(mapping))
+    save_json(config.COMPANIES_PATH, mapping)
 
 
 def load_companies() -> dict[str, list[int]]:
-    if not config.COMPANIES_PATH.exists():
-        return {}
-    try:
-        return json.loads(config.COMPANIES_PATH.read_text())
-    except json.JSONDecodeError:
-        return {}
+    return load_json(config.COMPANIES_PATH, {})
+
+
+def save_company_stats(stats: dict) -> None:
+    save_json(config.COMPANY_STATS_PATH, stats)
+
+
+def load_company_stats() -> dict:
+    return load_json(config.COMPANY_STATS_PATH, {})
+
+
+def save_corpus_terms(terms: dict) -> None:
+    save_json(config.CORPUS_TERMS_PATH, terms)
+
+
+def load_corpus_terms() -> dict:
+    return load_json(config.CORPUS_TERMS_PATH, {})
 
 
 def save_meta(meta: dict[str, Any]) -> None:

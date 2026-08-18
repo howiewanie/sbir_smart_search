@@ -1,296 +1,316 @@
 const el = (id) => document.getElementById(id);
 
-const state = {
-  offset: 0,
-  hits: [],
-  total: 0,
-  ready: false,
+const state = { data: null, theme: null };
+
+/* ---------- formatting ---------- */
+
+const money = (v) => {
+  if (!v) return "$0";
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `$${Math.round(v / 1e3)}K`;
+  return `$${Math.round(v)}`;
 };
 
-const CHECKBOX_FACETS = ["program", "phase", "agency"];
-
-const money = (value) => {
-  if (!value) return "Amount not listed";
-  if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
-  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-  if (value >= 1e3) return `$${Math.round(value / 1e3)}K`;
-  return `$${value.toLocaleString()}`;
-};
-
-const escapeHtml = (value) =>
-  String(value ?? "").replace(/[&<>"']/g, (c) => ({
+const esc = (v) =>
+  String(v ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 
-/* ---------- reading the form ---------- */
+const titleCase = (s) =>
+  s.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
 
-function checkedValues(facet) {
-  return Array.from(
-    document.querySelectorAll(`#facet-${facet} input:checked`)
-  ).map((input) => input.value);
-}
+/* ---------- charts, drawn as plain elements ---------- */
 
-function currentParams() {
-  const params = new URLSearchParams();
-  const query = el("query").value.trim();
-  if (query) params.set("q", query);
-  params.set("mode", el("mode").value);
-  params.set("sort", el("sort").value);
-
-  for (const facet of CHECKBOX_FACETS) {
-    for (const value of checkedValues(facet)) params.append(facet, value);
-  }
-  if (el("facet-state").value) params.append("state", el("facet-state").value);
-
-  for (const field of ["year_min", "year_max", "amount_min", "amount_max"]) {
-    const value = el(field).value.trim();
-    if (value !== "") params.set(field, value);
-  }
-  for (const flag of ["women_owned", "hubzone", "disadvantaged"]) {
-    if (el(flag).checked) params.set(flag, "true");
-  }
-  return params;
-}
-
-/* ---------- rendering ---------- */
-
-function renderHit(hit, rank) {
-  const website = hit.website && /^https?:\/\//i.test(hit.website) ? hit.website : null;
-  const company = escapeHtml(hit.company || "Unknown company");
-  const tags = [
-    hit.agency,
-    hit.branch,
-    hit.phase,
-    hit.program,
-    hit.year,
-    [hit.city, hit.state].filter(Boolean).join(", "),
-  ].filter(Boolean);
-
-  const abstract = hit.abstract
-    ? `<div class="abstract"><p class="clamp">${escapeHtml(hit.abstract)}</p>
-         <button type="button" data-expand>Show full abstract</button></div>`
-    : "";
-
-  const match = hit.similarity != null
-    ? `<span class="match">${Math.round(hit.similarity * 100)}% match</span>`
-    : "";
-
-  return `<li class="hit">
-    <div class="hit-top">
-      <h3>${rank}. ${escapeHtml(hit.title || "Untitled award")}</h3>
-      ${match}
-    </div>
-    <p class="company">${website ? `<a href="${escapeHtml(website)}" rel="noopener" target="_blank">${company}</a>` : company}</p>
-    <div class="meta">
-      <span class="tag amount">${money(hit.amount)}</span>
-      ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
-    </div>
-    ${abstract}
-  </li>`;
-}
-
-function renderNotice(title, body) {
-  el("hits").innerHTML = `<div class="notice"><h3>${title}</h3>${body}</div>`;
-}
-
-function renderEmpty(query, mode) {
-  if (mode === "company" && query) {
-    // Usually this is either a typo or one of the big primes, which are not
-    // eligible for these programs in the first place.
-    renderNotice(
-      "No company matched",
-      `<p>Nothing in the database is named like <b>${escapeHtml(query)}</b>.</p>
-       <p>SBIR and STTR fund small businesses, so large prime contractors never
-       appear. Try a shorter form of the name, or switch back to
-       <b>Topic</b> to search by subject instead.</p>`
-    );
-  } else if (!query) {
-    renderNotice(
-      "Nothing to show",
-      "<p>These filters exclude every award. Try clearing one.</p>"
-    );
-  } else {
-    renderNotice("No matches", "<p>Try broader wording or clear a filter.</p>");
-  }
-}
-
-function render() {
-  el("hits").innerHTML = state.hits.map((hit, i) => renderHit(hit, i + 1)).join("");
-  el("load-more").hidden = state.hits.length >= state.total;
-}
-
-/* ---------- searching ---------- */
-
-async function runSearch({ append = false } = {}) {
-  if (!state.ready) return;
-  state.offset = append ? state.offset + 20 : 0;
-
-  const params = currentParams();
-  params.set("limit", "20");
-  params.set("offset", String(state.offset));
-
-  document.body.classList.add("busy");
-  try {
-    const response = await fetch(`/api/search?${params}`);
-    if (!response.ok) throw new Error(`search failed (${response.status})`);
-    const data = await response.json();
-
-    state.hits = append ? state.hits.concat(data.results) : data.results;
-    state.total = data.total;
-
-    if (!state.hits.length) {
-      renderEmpty(el("query").value.trim(), el("mode").value);
-      el("load-more").hidden = true;
-      el("summary").innerHTML = "No results.";
-    } else {
-      render();
-      const shown = state.hits.length;
-      const cap = data.truncated ? "+" : "";
-      el("summary").innerHTML =
-        `Showing <b>${shown}</b> of <b>${state.total.toLocaleString()}${cap}</b> matches
-         &middot; ${data.took_ms} ms`;
-    }
-
-    const exportParams = currentParams();
-    exportParams.set("limit", "500");
-    const exportLink = el("export");
-    exportLink.href = `/api/export.csv?${exportParams}`;
-    exportLink.setAttribute("aria-disabled", state.hits.length ? "false" : "true");
-
-    const url = new URL(window.location);
-    url.search = params.toString();
-    history.replaceState(null, "", url);
-  } catch (error) {
-    renderNotice("Something went wrong", `<p>${escapeHtml(error.message)}</p>`);
-  } finally {
-    document.body.classList.remove("busy");
-  }
-}
-
-/* ---------- setup ---------- */
-
-function buildCheckboxes(facet, values) {
-  el(`facet-${facet}`).innerHTML = values
+function barRows(target, rows, { valueKey = "awards", label = (r) => r.name,
+                                 format = (v) => v } = {}) {
+  const max = Math.max(...rows.map((r) => r[valueKey]), 1);
+  el(target).innerHTML = rows
     .map(
-      (value) => `<label><input type="checkbox" value="${escapeHtml(value)}">
-        <span>${escapeHtml(value)}</span></label>`
+      (r) => `<div class="bar-row">
+        <span class="bar-label" title="${esc(label(r))}">${esc(label(r))}</span>
+        <span class="bar-track"><span class="bar-fill" style="width:${(r[valueKey] / max) * 100}%"></span></span>
+        <span class="bar-value">${format(r[valueKey])}</span>
+      </div>`
     )
     .join("");
 }
 
-async function loadIndex() {
-  const stats = await fetch("/api/stats").then((r) => r.json());
-
-  if (!stats.ready) {
-    el("dataset").textContent = "No index yet";
-    renderNotice(
-      "Build the index to get started",
-      `<p>Download the award data and embed it once:</p>
-       <p><code>python -m sbir setup</code></p>
-       <p>Want to try it quickly? <code>python -m sbir setup --since 2020</code>
-       indexes the most recent awards in a couple of minutes.</p>`
-    );
-    el("summary").textContent = "Index not built.";
+function columnChart(target, points) {
+  if (!points.length) {
+    el(target).innerHTML = `<p class="hint">Not enough dated awards to plot.</p>`;
     return;
   }
-
-  const totals = stats.totals || {};
-  const years = stats.years || [];
-  const cov = stats.coverage || {};
-  // Report the range the data actually covers. A trailing year that is still
-  // filling up would otherwise be advertised as full coverage on the strength
-  // of a handful of records.
-  const from = cov.first_year ?? years[0];
-  const through = cov.complete_through ?? years[1];
-  el("dataset").innerHTML =
-    `${(totals.awards || stats.awards).toLocaleString()} awards &middot;
-     ${from}&ndash;${through} &middot;
-     ${(totals.companies || 0).toLocaleString()} companies &middot;
-     $${((totals.funding || 0) / 1e9).toFixed(1)}B`;
-  if (cov.partial_years && cov.partial_years.length) {
-    el("dataset").title =
-      `${cov.partial_years.join(", ")} present but incomplete in this export, ` +
-      `so excluded from the coverage range.`;
-  }
-
-  const facets = await fetch("/api/facets").then((r) => r.json());
-  for (const facet of CHECKBOX_FACETS) buildCheckboxes(facet, facets[facet] || []);
-  el("facet-state").innerHTML =
-    '<option value="">Any state</option>' +
-    (facets.state || [])
-      .map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
-      .join("");
-
-  if (years.length === 2) {
-    el("year_min").placeholder = years[0];
-    el("year_max").placeholder = years[1];
-  }
-
-  state.ready = true;
-
-  // Restore a shared link, otherwise show the newest awards as a starting point.
-  const incoming = new URLSearchParams(window.location.search);
-  if (incoming.toString()) {
-    applyParams(incoming);
-  } else {
-    el("sort").value = "newest";
-  }
-  runSearch();
+  const max = Math.max(...points.map((p) => p.awards), 1);
+  const step = points.length > 18 ? Math.ceil(points.length / 9) : 1;
+  el(target).innerHTML =
+    `<div class="cols">${points
+      .map((p, i) => {
+        const h = Math.max((p.awards / max) * 100, p.awards ? 4 : 0);
+        const tick = i % step === 0 || i === points.length - 1 ? String(p.year).slice(2) : "";
+        return `<span class="col" title="${p.year}: ${p.awards} awards, ${money(p.funding)}">
+                  <span class="col-fill" style="height:${h}%"></span>
+                  <span class="col-tick">${tick}</span>
+                </span>`;
+      })
+      .join("")}</div>`;
 }
 
-function applyParams(params) {
-  el("query").value = params.get("q") || "";
-  if (params.get("mode")) el("mode").value = params.get("mode");
-  if (params.get("sort")) el("sort").value = params.get("sort");
-  for (const facet of CHECKBOX_FACETS) {
-    const wanted = new Set(params.getAll(facet));
-    document
-      .querySelectorAll(`#facet-${facet} input`)
-      .forEach((input) => (input.checked = wanted.has(input.value)));
+/* ---------- interpretation, derived from the figures ---------- */
+
+function interpretation(d) {
+  const out = [];
+  const t = d.totals;
+  const [top, second] = d.agencies;
+
+  if (top) {
+    const share = Math.round((top.awards / t.awards) * 100);
+    out.push(
+      `${esc(top.name)} accounts for ${top.awards} of the ${t.awards} awards examined (${share}%)` +
+      (second ? `, ahead of ${esc(second.name)} at ${second.awards}.` : ".") +
+      ` Historical concentration of this kind suggests ${esc(top.name)} is worth investigating as a route to market, though it does not evidence current procurement demand.`
+    );
   }
-  if (params.get("state")) el("facet-state").value = params.get("state");
-  for (const field of ["year_min", "year_max", "amount_min", "amount_max"]) {
-    el(field).value = params.get(field) || "";
+
+  const ii = (d.phases.find((p) => p.name === "Phase II") || {}).awards || 0;
+  const i = (d.phases.find((p) => p.name === "Phase I") || {}).awards || 0;
+  if (i + ii > 0) {
+    const rate = Math.round((ii / (i + ii)) * 100);
+    out.push(
+      rate >= 40
+        ? `Phase II awards make up ${rate}% of this evidence, which points to work that has repeatedly cleared feasibility review rather than stalling at first-stage funding.`
+        : `Phase I dominates at ${100 - rate}% of the evidence, so much of this activity is early-stage exploration and relatively few efforts are visibly reaching Phase II here.`
+    );
   }
-  for (const flag of ["women_owned", "hubzone", "disadvantaged"]) {
-    el(flag).checked = params.get(flag) === "true";
+
+  const prog = d.ecosystem.progressed || [];
+  if (prog.length) {
+    const lead = prog[0];
+    out.push(
+      `${prog.length} of the firms here have carried work in this area from Phase I into Phase II, led by ${esc(titleCase(lead.company))} with ${lead.topic_progressed}. Progression within the same technology area is the clearest maturity signal the award record offers, so these are reasonable firms to examine first.`
+    );
+  }
+
+  const pts = (d.timeline.points || []).filter((p) => p.awards > 0);
+  if (pts.length >= 6) {
+    const half = Math.floor(pts.length / 2);
+    const early = pts.slice(0, half).reduce((a, p) => a + p.awards, 0);
+    const late = pts.slice(half).reduce((a, p) => a + p.awards, 0);
+    const y0 = pts[half].year, y1 = pts[pts.length - 1].year;
+    if (late > early * 1.3) {
+      out.push(`Activity is weighted towards the recent half of the record (${late} awards from ${y0}-${y1} against ${early} before), which is consistent with sustained and possibly growing interest.`);
+    } else if (early > late * 1.3) {
+      out.push(`Most of this activity predates ${y0} (${early} awards before, ${late} from ${y0}-${y1}). The available evidence points to a field that was funded more heavily in the past than recently.`);
+    } else {
+      out.push(`Award activity is spread fairly evenly across the record rather than clustering in one period, indicating steady rather than episodic funding.`);
+    }
+  }
+
+  const strength = t.awards >= 30
+    ? `Strong historical evidence: ${t.awards} closely related awards across ${t.agencies} agencies and ${t.companies} companies.`
+    : `Limited historical evidence: only ${t.awards} closely related awards were identified, so treat the reading above as tentative.`;
+  out.push(strength);
+
+  el("interpretation").innerHTML = out.map((s) => `<li>${s}</li>`).join("");
+}
+
+/* ---------- award cards ---------- */
+
+function awardCard(a, rank) {
+  const site = a.website && /^https?:\/\//i.test(a.website) ? a.website : null;
+  const company = esc(titleCase(a.company || "Unknown"));
+  const tags = [a.agency, a.branch, a.phase, a.program, a.year,
+                [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean);
+  const extra = a.related_awards > 1
+    ? `<span class="tag related">+${a.related_awards - 1} related award${a.related_awards > 2 ? "s" : ""} &middot; ${money(a.related_funding)} total</span>`
+    : "";
+  return `<li class="hit" data-id="${a.id}">
+    <div class="hit-top">
+      <h4>${rank}. ${esc(a.title || "Untitled award")}</h4>
+      <span class="tag amount">${money(a.amount)}</span>
+    </div>
+    <p class="company">${site ? `<a href="${esc(site)}" target="_blank" rel="noopener">${company}</a>` : company}</p>
+    <div class="meta">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}${extra}</div>
+    ${a.abstract ? `<div class="abstract"><p class="clamp">${esc(a.abstract)}</p>
+       <button type="button" data-expand>Show full abstract</button></div>` : ""}
+  </li>`;
+}
+
+function renderAwards() {
+  const d = state.data;
+  const shown = state.theme
+    ? d.awards.filter((a) => state.theme.award_ids.includes(a.id))
+    : d.awards;
+  el("awards").innerHTML = shown.map((a, i) => awardCard(a, i + 1)).join("");
+  const ev = d.evidence;
+  el("evidence-note").innerHTML = state.theme
+    ? `${shown.length} awards mentioning <b>${esc(state.theme.label)}</b>. <button type="button" class="link" id="clear-theme">Show all ${d.awards.length}</button>`
+    : `The ${ev.size} awards below were selected from the ${ev.considered} closest matches, after collapsing ${ev.duplicates_removed} repeat filings of the same project and limiting any one company to ${ev.per_company_cap}.`;
+  const clear = el("clear-theme");
+  if (clear) clear.addEventListener("click", () => { state.theme = null; renderThemes(); renderAwards(); });
+}
+
+function renderThemes() {
+  el("themes").innerHTML = state.data.themes
+    .map((t) => `<button type="button" class="theme${state.theme && state.theme.label === t.label ? " on" : ""}"
+        data-theme="${esc(t.label)}">${esc(t.label)} <span>${t.awards}</span></button>`)
+    .join("");
+}
+
+/* ---------- page assembly ---------- */
+
+function render(d) {
+  state.data = d;
+  state.theme = null;
+  const t = d.totals;
+
+  el("topic").textContent = titleCase(d.query);
+  el("lede").textContent =
+    `Across the ${t.awards} most closely related SBIR/STTR awards, ${money(t.funding)} in federal funding reached ` +
+    `${t.companies} companies through ${t.agencies} agencies between ${t.years[0]} and ${t.years[1]}.`;
+
+  el("figures").innerHTML = [
+    [t.awards, "awards examined"],
+    [money(t.funding), "identified funding"],
+    [t.agencies, "agencies"],
+    [t.companies, "companies"],
+  ].map(([v, k]) => `<div class="figure"><b>${v}</b><span>${k}</span></div>`).join("");
+
+  const cov = d.coverage || {};
+  el("basis").textContent =
+    `Evidence drawn from awards recorded between ${cov.first_year} and ${cov.complete_through}.` +
+    (cov.partial_years && cov.partial_years.length
+      ? ` ${cov.partial_years.join(", ")} is present in the export but incomplete, so it is excluded from totals and charts.`
+      : "");
+
+  columnChart("chart-timeline", d.timeline.points);
+  barRows("chart-agency", d.agencies.slice(0, 6), { valueKey: "funding", format: money });
+  barRows("chart-phase", d.phases);
+  barRows("chart-program", d.programs);
+
+  renderThemes();
+
+  const company = (c, detail) => `<div class="firm">
+      <b>${esc(titleCase(c.company))}</b>
+      <span>${detail(c)}</span>
+    </div>`;
+  el("recurring").innerHTML = d.ecosystem.recurring.length
+    ? d.ecosystem.recurring.map((c) => company(c,
+        (x) => `${x.awards_here} award${x.awards_here > 1 ? "s" : ""} here &middot; ${x.total_awards} overall &middot; ${money(x.total_funding)} &middot; ${x.first_year}-${x.last_year}`)).join("")
+    : `<p class="hint">No firm in this evidence has a broad award history.</p>`;
+  el("progressed").innerHTML = d.ecosystem.progressed.length
+    ? d.ecosystem.progressed.map((c) => company(c,
+        (x) => `${x.topic_progressed} project${x.topic_progressed > 1 ? "s" : ""} advanced in this area &middot; ${x.total_awards} awards overall`)).join("")
+    : `<p class="hint">No Phase I to Phase II progression found within this technology area.</p>`;
+
+  renderAwards();
+  interpretation(d);
+
+  el("report").hidden = false;
+  el("loading").hidden = true;
+  el("ask").classList.add("compact");
+}
+
+/* ---------- running a search ---------- */
+
+const STEPS = [
+  "Searching historical awards…",
+  "Identifying relevant companies and programs…",
+  "Analysing funding patterns…",
+  "Assembling the evidence…",
+];
+
+async function run(query) {
+  if (!query.trim()) return;
+  el("report").hidden = true;
+  el("loading").hidden = false;
+  el("ask").classList.add("compact");
+
+  let step = 0;
+  el("loading-step").textContent = STEPS[0];
+  const ticker = setInterval(() => {
+    step = Math.min(step + 1, STEPS.length - 1);
+    el("loading-step").textContent = STEPS[step];
+  }, 700);
+
+  try {
+    const res = await fetch(`/api/research?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error((await res.json()).detail || `Request failed (${res.status})`);
+    render(await res.json());
+    const url = new URL(window.location);
+    url.searchParams.set("q", query);
+    history.replaceState(null, "", url);
+  } catch (err) {
+    el("loading").innerHTML = `<div class="loading-card"><p>${esc(err.message)}</p></div>`;
+  } finally {
+    clearInterval(ticker);
   }
 }
 
-function clearFilters() {
-  document.querySelectorAll(".filters input[type=checkbox]").forEach((c) => (c.checked = false));
-  document.querySelectorAll(".filters input[type=number]").forEach((i) => (i.value = ""));
-  el("facet-state").value = "";
-  runSearch();
-}
+/* ---------- events ---------- */
 
-el("search-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  runSearch();
+el("research-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  run(el("query").value);
 });
 
-el("filters").addEventListener("change", () => runSearch());
-
-el("sort").addEventListener("change", () => runSearch());
-el("mode").addEventListener("change", () => runSearch());
-el("clear-filters").addEventListener("click", clearFilters);
-el("load-more").addEventListener("click", () => runSearch({ append: true }));
-
-el("examples").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-q]");
-  if (!button) return;
-  el("query").value = button.dataset.q;
-  el("mode").value = "auto";
-  el("sort").value = "relevance";
-  runSearch();
+el("examples").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-q]");
+  if (!b) return;
+  el("query").value = b.dataset.q;
+  run(b.dataset.q);
 });
 
-el("hits").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-expand]");
-  if (!button) return;
-  const paragraph = button.previousElementSibling;
-  const clamped = paragraph.classList.toggle("clamp");
-  button.textContent = clamped ? "Show full abstract" : "Hide abstract";
+el("themes").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-theme]");
+  if (!b) return;
+  const picked = state.data.themes.find((t) => t.label === b.dataset.theme);
+  state.theme = state.theme && state.theme.label === picked.label ? null : picked;
+  renderThemes();
+  renderAwards();
 });
 
-loadIndex();
+el("awards").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-expand]");
+  if (!b) return;
+  const clamped = b.previousElementSibling.classList.toggle("clamp");
+  b.textContent = clamped ? "Show full abstract" : "Hide abstract";
+});
+
+el("brief").addEventListener("click", () => window.print());
+
+el("restart").addEventListener("click", () => {
+  el("report").hidden = true;
+  el("ask").classList.remove("compact");
+  el("query").value = "";
+  el("query").focus();
+  history.replaceState(null, "", window.location.pathname);
+});
+
+/* ---------- boot ---------- */
+
+(async function boot() {
+  try {
+    const stats = await fetch("/api/stats").then((r) => r.json());
+    if (!stats.ready) {
+      el("dataset").textContent = "No index yet";
+      el("loading").hidden = false;
+      el("loading").innerHTML =
+        `<div class="loading-card"><p>Build the index first: <code>python -m sbir setup</code></p></div>`;
+      return;
+    }
+    const c = stats.coverage || {};
+    const t = stats.totals || {};
+    el("dataset").innerHTML =
+      `${(t.awards || stats.awards).toLocaleString()} awards &middot; ${c.first_year}&ndash;${c.complete_through}
+       &middot; ${(t.companies || 0).toLocaleString()} companies`;
+
+    const incoming = new URLSearchParams(window.location.search).get("q");
+    if (incoming) {
+      el("query").value = incoming;
+      run(incoming);
+    }
+  } catch {
+    el("dataset").textContent = "Unavailable";
+  }
+})();

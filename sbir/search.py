@@ -8,7 +8,7 @@ from datetime import datetime
 
 from qdrant_client import models
 
-from . import config, dataset, store
+from . import config, dataset, evidence, intelligence, store
 from .embedder import Embedder
 
 SORT_OPTIONS = ("relevance", "newest", "oldest", "amount")
@@ -125,6 +125,8 @@ class SearchEngine:
             )
         self.company_ids = store.load_companies()
         self.company_names = [(name.lower(), name) for name in self.company_ids]
+        self.company_stats = store.load_company_stats()
+        self.corpus_terms = store.load_corpus_terms()
         # Recency is measured against the newest year the data actually covers,
         # not against today. Anchoring to the wall clock would quietly bleed
         # recency credit out of the whole corpus as the export ages, and would
@@ -182,7 +184,7 @@ class SearchEngine:
             # whatever the caller asked for.
             pool_size = min(MAX_POOL, max(MIN_POOL, wanted * 2))
             records = store.scroll(self.client, pool_size, qfilter)
-            hits = [self._hit(r.payload, None) for r in records]
+            hits = [self._hit(r.payload, None, r.id) for r in records]
             if sort == "relevance":
                 sort = "newest"
 
@@ -202,12 +204,57 @@ class SearchEngine:
             "query": query,
             "mode": mode,
             "sort": sort,
+            # The number of candidates considered, not the number of awards in
+            # the corpus that match. Semantic retrieval has no boolean notion of
+            # a match, so anything presented as a count would be invented.
+            "examined": len(hits),
             "total": len(hits),
             "truncated": truncated,
             "offset": offset,
             "limit": limit,
             "took_ms": round((time.perf_counter() - started) * 1000, 1),
             "results": hits[offset:offset + limit],
+        }
+
+    def research(self, query: str, filters: Filters | None = None) -> dict:
+        """The full pipeline behind the intelligence page.
+
+        Retrieval produces candidates, evidence selection turns them into a
+        defensible set, and analysis is arithmetic over that set. Each stage is
+        timed separately because that is the only way to know which one to fix
+        when the page gets slow.
+        """
+        started = time.perf_counter()
+        filters = filters or Filters()
+        query = (query or "").strip()
+        if not query:
+            raise ValueError("A research question is required.")
+
+        marks = {}
+        candidates = self._semantic_hits(
+            query, filters, filters.to_qdrant(),
+            config.EVIDENCE_CANDIDATES, config.EVIDENCE_CANDIDATES,
+        )
+        self._rank(candidates, query)
+        marks["retrieval_ms"] = round((time.perf_counter() - started) * 1000, 1)
+
+        stage = time.perf_counter()
+        selected = evidence.select(candidates)
+        marks["evidence_ms"] = round((time.perf_counter() - stage) * 1000, 1)
+
+        stage = time.perf_counter()
+        analysis = intelligence.analyse(
+            selected, candidates, self.coverage, self.company_stats, self.corpus_terms
+        )
+        marks["analysis_ms"] = round((time.perf_counter() - stage) * 1000, 1)
+
+        return {
+            "query": query,
+            "coverage": self.coverage,
+            "awards": selected.awards,
+            **analysis,
+            "timings": marks,
+            "took_ms": round((time.perf_counter() - started) * 1000, 1),
         }
 
     def _semantic_hits(self, query: str, filters: Filters,
@@ -217,18 +264,18 @@ class SearchEngine:
 
         if qfilter is None:
             points = store.query(self.client, vector, pool_size)
-            return [self._hit(p.payload, p.score) for p in points]
+            return [self._hit(p.payload, p.score, p.id) for p in points]
 
         probe = store.query(self.client, vector, PREFILTER_POOL)
         hits = [
-            self._hit(p.payload, p.score)
+            self._hit(p.payload, p.score, p.id)
             for p in probe if filters.matches(p.payload)
         ]
         if len(hits) >= max(wanted, 1):
             return hits[:MAX_POOL]
 
         points = store.query(self.client, vector, pool_size, qfilter)
-        return [self._hit(p.payload, p.score) for p in points]
+        return [self._hit(p.payload, p.score, p.id) for p in points]
 
     def resolve_companies(self, query: str, limit: int = 25) -> list[str]:
         """Company names matching every word of the query, best (shortest) first.
@@ -252,7 +299,7 @@ class SearchEngine:
             ids.extend(self.company_ids.get(name, ()))
         records = store.retrieve(self.client, ids[:MAX_POOL])
         return [
-            self._hit(r.payload, None)
+            self._hit(r.payload, None, r.id)
             for r in records if filters.matches(r.payload)
         ]
 
@@ -277,8 +324,9 @@ class SearchEngine:
         hits.sort(key=lambda h: h["score"], reverse=True)
 
     @staticmethod
-    def _hit(payload: dict, similarity: float | None) -> dict:
+    def _hit(payload: dict, similarity: float | None, point_id: int | None = None) -> dict:
         hit = dict(payload)
+        hit["id"] = point_id
         hit["similarity"] = round(similarity, 6) if similarity is not None else None
         hit["score"] = hit["similarity"]
         return hit

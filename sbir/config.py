@@ -22,6 +22,13 @@ CSV_PATH = DATA_DIR / "award_data.csv"
 QDRANT_PATH = DATA_DIR / "qdrant"
 INDEX_META_PATH = DATA_DIR / "index_meta.json"
 COMPANIES_PATH = DATA_DIR / "companies.json"
+COMPANY_STATS_PATH = DATA_DIR / "company_stats.json"
+CORPUS_TERMS_PATH = DATA_DIR / "corpus_terms.json"
+
+# Evidence set shape. Small enough to read, wide enough to aggregate over.
+EVIDENCE_SIZE = int(os.environ.get("SBIR_EVIDENCE_SIZE", 40))
+EVIDENCE_CANDIDATES = int(os.environ.get("SBIR_EVIDENCE_CANDIDATES", 400))
+EVIDENCE_PER_COMPANY = int(os.environ.get("SBIR_EVIDENCE_PER_COMPANY", 3))
 
 # Set this to use a standalone Qdrant server instead of the embedded store,
 # e.g. SBIR_QDRANT_URL=http://localhost:6333

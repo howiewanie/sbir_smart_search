@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SBIR Smart Search</title>
-<meta name="description" content="Semantic search across the public SBIR/STTR award database.">
+<title>SBIR Research Intelligence</title>
+<meta name="description" content="Evidence-backed intelligence on what the U.S. government has funded.">
 <link rel="stylesheet" href="/styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128269;</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128202;</text></svg>">
 </head>
 <body>
 
@@ -14,104 +14,116 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark"></span>
-      <span>SBIR <strong>Smart Search</strong></span>
+      <span>SBIR <strong>Research Intelligence</strong></span>
     </a>
-    <div class="dataset" id="dataset">Loading index&hellip;</div>
+    <div class="dataset" id="dataset">Loading&hellip;</div>
   </div>
 </header>
 
-<section class="hero">
+<!-- ---------- ask ---------- -->
+<section class="ask" id="ask">
   <div class="wrap">
-    <h1>Search 40 years of federal R&amp;D awards by meaning, not keywords.</h1>
-    <form class="searchbox" id="search-form" autocomplete="off">
-      <select id="mode" aria-label="Search mode">
-        <option value="auto">Topic</option>
-        <option value="company">Company</option>
-      </select>
-      <input id="query" type="search" placeholder="e.g. lightweight batteries for small drones" aria-label="Search query">
-      <button type="submit" id="submit">Search</button>
+    <h1>What are you exploring?</h1>
+    <form class="askbox" id="research-form" autocomplete="off">
+      <input id="query" type="search"
+             placeholder="Describe a technology, company, product, or research idea…"
+             aria-label="Research question">
+      <button type="submit" id="submit">Research</button>
     </form>
     <div class="examples" id="examples">
-      <span>Try:</span>
-      <button type="button" data-q="autonomous underwater navigation">autonomous underwater navigation</button>
-      <button type="button" data-q="mRNA vaccine manufacturing">mRNA vaccine manufacturing</button>
-      <button type="button" data-q="hypersonic thermal protection">hypersonic thermal protection</button>
-      <button type="button" data-q="quantum sensing">quantum sensing</button>
+      <span>For example:</span>
+      <button type="button" data-q="autonomous inspection of power grid infrastructure using drones">autonomous grid inspection</button>
+      <button type="button" data-q="battery thermal management for electric aircraft">battery thermal management</button>
+      <button type="button" data-q="industrial control system cybersecurity">industrial control cybersecurity</button>
+      <button type="button" data-q="on-orbit satellite servicing and refueling">on-orbit satellite servicing</button>
     </div>
   </div>
 </section>
 
-<main class="wrap layout">
+<!-- ---------- loading ---------- -->
+<section class="wrap loading" id="loading" hidden>
+  <div class="loading-card">
+    <div class="bar"><span></span></div>
+    <p id="loading-step">Searching historical awards&hellip;</p>
+  </div>
+</section>
 
-  <aside class="filters" id="filters">
-    <div class="filters-head">
-      <h2>Filters</h2>
-      <button type="button" id="clear-filters" class="link">Clear</button>
-    </div>
+<!-- ---------- report ---------- -->
+<main class="wrap report" id="report" hidden>
 
-    <fieldset>
-      <legend>Year</legend>
-      <div class="row">
-        <input type="number" id="year_min" placeholder="From" inputmode="numeric">
-        <span class="dash">&ndash;</span>
-        <input type="number" id="year_max" placeholder="To" inputmode="numeric">
+  <section class="orient" id="orient">
+    <h2 id="topic"></h2>
+    <p class="lede" id="lede"></p>
+    <div class="figures" id="figures"></div>
+    <p class="basis" id="basis"></p>
+  </section>
+
+  <section class="panel" id="panel-signals">
+    <h3>Government signals</h3>
+    <div class="signal-grid">
+      <div class="chart-box">
+        <h4>Activity over time</h4>
+        <div id="chart-timeline" class="chart"></div>
       </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Award amount</legend>
-      <div class="row">
-        <input type="number" id="amount_min" placeholder="Min $" inputmode="numeric">
-        <span class="dash">&ndash;</span>
-        <input type="number" id="amount_max" placeholder="Max $" inputmode="numeric">
+      <div class="chart-box">
+        <h4>Funding by agency</h4>
+        <div id="chart-agency" class="chart"></div>
       </div>
-    </fieldset>
-
-    <fieldset data-facet="program"><legend>Program</legend><div class="opts" id="facet-program"></div></fieldset>
-    <fieldset data-facet="phase"><legend>Phase</legend><div class="opts" id="facet-phase"></div></fieldset>
-    <fieldset data-facet="agency"><legend>Agency</legend><div class="opts scroll" id="facet-agency"></div></fieldset>
-    <fieldset data-facet="state">
-      <legend>State</legend>
-      <select id="facet-state"><option value="">Any state</option></select>
-    </fieldset>
-
-    <fieldset>
-      <legend>Business type</legend>
-      <div class="opts">
-        <label><input type="checkbox" id="women_owned"> Woman owned</label>
-        <label><input type="checkbox" id="hubzone"> HUBZone</label>
-        <label><input type="checkbox" id="disadvantaged"> Disadvantaged</label>
+      <div class="chart-box narrow">
+        <h4>Phase</h4>
+        <div id="chart-phase" class="chart"></div>
       </div>
-    </fieldset>
-  </aside>
-
-  <section class="results">
-    <div class="toolbar">
-      <div class="summary" id="summary">Enter a query to begin.</div>
-      <div class="controls">
-        <label for="sort">Sort</label>
-        <select id="sort">
-          <option value="relevance">Relevance</option>
-          <option value="newest">Newest</option>
-          <option value="oldest">Oldest</option>
-          <option value="amount">Award size</option>
-        </select>
-        <a id="export" class="btn-ghost" href="#">Export CSV</a>
+      <div class="chart-box narrow">
+        <h4>Program</h4>
+        <div id="chart-program" class="chart"></div>
       </div>
-    </div>
-
-    <ol class="hits" id="hits"></ol>
-
-    <div class="more">
-      <button type="button" id="load-more" hidden>Load more</button>
     </div>
   </section>
+
+  <section class="panel" id="panel-themes">
+    <h3>Technology themes</h3>
+    <p class="hint">Terms that recur across this evidence and are uncommon elsewhere in the corpus. Select one to filter the awards below.</p>
+    <div class="themes" id="themes"></div>
+  </section>
+
+  <section class="panel" id="panel-companies">
+    <h3>Companies &amp; ecosystem</h3>
+    <div class="eco-grid">
+      <div>
+        <h4>Recurring recipients</h4>
+        <p class="hint">Firms appearing most often in this evidence, with their wider award history.</p>
+        <div id="recurring"></div>
+      </div>
+      <div>
+        <h4>Phase I &rarr; Phase II progression</h4>
+        <p class="hint">Projects the same firm carried from Phase I into Phase II <em>within this technology area</em>.</p>
+        <div id="progressed"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-evidence">
+    <h3>Evidence</h3>
+    <p class="hint" id="evidence-note"></p>
+    <ol class="hits" id="awards"></ol>
+  </section>
+
+  <section class="panel interp" id="panel-interp">
+    <h3>Reading the evidence</h3>
+    <p class="hint">Observations follow from the figures above. They describe historical funding, which is not the same as current demand.</p>
+    <ul id="interpretation"></ul>
+  </section>
+
+  <div class="actions no-print">
+    <button type="button" id="brief">Generate 1-page brief</button>
+    <button type="button" id="restart" class="ghost">New search</button>
+  </div>
 
 </main>
 
 <footer class="wrap site-footer">
-  <p>Data: <a href="https://www.sbir.gov/awards" rel="noopener">SBIR.gov award database</a>, refreshed by rerunning
-    <code>python -m sbir setup --force</code>. Awards are public record; this tool only reindexes them.</p>
+  <p>Evidence from the <a href="https://www.sbir.gov/awards" rel="noopener">SBIR.gov award database</a>.
+     Every figure on this page is computed from award records, not generated.</p>
 </footer>
 
 <script src="/app.js"></script>

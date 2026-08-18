@@ -71,6 +71,32 @@ def companies(q: str = "", limit: int = Query(10, ge=1, le=50)):
     return {"companies": engine().companies(q, limit)}
 
 
+@app.get("/api/research")
+def research(
+    q: str,
+    agency: list[str] = Query(default=[]),
+    branch: list[str] = Query(default=[]),
+    phase: list[str] = Query(default=[]),
+    program: list[str] = Query(default=[]),
+    state: list[str] = Query(default=[]),
+    year_min: int | None = None,
+    year_max: int | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    women_owned: bool = False,
+    hubzone: bool = False,
+    disadvantaged: bool = False,
+):
+    try:
+        return engine().research(
+            q,
+            _filters(agency, branch, phase, program, state, year_min, year_max,
+                     amount_min, amount_max, women_owned, hubzone, disadvantaged),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.get("/api/search")
 def search(
     q: str = "",

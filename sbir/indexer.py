@@ -9,7 +9,7 @@ import pandas as pd
 from qdrant_client import models
 from tqdm import tqdm
 
-from . import config, dataset, store
+from . import config, dataset, derive, store
 from .embedder import Embedder
 
 # Kept in the payload so results can be rendered without touching the CSV again.
@@ -31,20 +31,6 @@ def _payload(row: pd.Series) -> dict:
     # Lower-cased company gives us exact company lookups without a scan.
     payload["company_key"] = row["company"].lower()
     return payload
-
-
-def company_map(frame: pd.DataFrame) -> dict[str, list[int]]:
-    """Company name -> the point ids it owns.
-
-    Company lookups are exact-name work, not similarity work, so resolving them
-    through a plain dictionary is both faster and more predictable than asking
-    the vector store for a full-text scan.
-    """
-    mapping: dict[str, list[int]] = {}
-    for point_id, name in zip(frame.index, frame["company"]):
-        if name:
-            mapping.setdefault(name, []).append(int(point_id))
-    return mapping
 
 
 def build(since: int | None = None, limit: int | None = None,
@@ -79,7 +65,8 @@ def build(since: int | None = None, limit: int | None = None,
             bar.update(len(chunk))
 
     elapsed = time.time() - started
-    store.save_companies(company_map(frame))
+    print("Building derived artifacts...")
+    derived = derive.build_all(frame)
     facets = dataset.build_facets(frame)
     meta = {
         "model": embedder.model_name,
@@ -90,6 +77,7 @@ def build(since: int | None = None, limit: int | None = None,
         "limit": limit,
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "build_seconds": round(elapsed, 1),
+        "derived": derived,
         "facets": facets,
     }
     store.save_meta(meta)
