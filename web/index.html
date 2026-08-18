@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SBIR Smart Search</title>
+<meta name="description" content="Semantic search across the public SBIR/STTR award database.">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128269;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark"></span>
+      <span>SBIR <strong>Smart Search</strong></span>
+    </a>
+    <div class="dataset" id="dataset">Loading index&hellip;</div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Search 40 years of federal R&amp;D awards by meaning, not keywords.</h1>
+    <form class="searchbox" id="search-form" autocomplete="off">
+      <select id="mode" aria-label="Search mode">
+        <option value="auto">Topic</option>
+        <option value="company">Company</option>
+      </select>
+      <input id="query" type="search" placeholder="e.g. lightweight batteries for small drones" aria-label="Search query">
+      <button type="submit" id="submit">Search</button>
+    </form>
+    <div class="examples" id="examples">
+      <span>Try:</span>
+      <button type="button" data-q="autonomous underwater navigation">autonomous underwater navigation</button>
+      <button type="button" data-q="mRNA vaccine manufacturing">mRNA vaccine manufacturing</button>
+      <button type="button" data-q="hypersonic thermal protection">hypersonic thermal protection</button>
+      <button type="button" data-q="quantum sensing">quantum sensing</button>
+    </div>
+  </div>
+</section>
+
+<main class="wrap layout">
+
+  <aside class="filters" id="filters">
+    <div class="filters-head">
+      <h2>Filters</h2>
+      <button type="button" id="clear-filters" class="link">Clear</button>
+    </div>
+
+    <fieldset>
+      <legend>Year</legend>
+      <div class="row">
+        <input type="number" id="year_min" placeholder="From" inputmode="numeric">
+        <span class="dash">&ndash;</span>
+        <input type="number" id="year_max" placeholder="To" inputmode="numeric">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Award amount</legend>
+      <div class="row">
+        <input type="number" id="amount_min" placeholder="Min $" inputmode="numeric">
+        <span class="dash">&ndash;</span>
+        <input type="number" id="amount_max" placeholder="Max $" inputmode="numeric">
+      </div>
+    </fieldset>
+
+    <fieldset data-facet="program"><legend>Program</legend><div class="opts" id="facet-program"></div></fieldset>
+    <fieldset data-facet="phase"><legend>Phase</legend><div class="opts" id="facet-phase"></div></fieldset>
+    <fieldset data-facet="agency"><legend>Agency</legend><div class="opts scroll" id="facet-agency"></div></fieldset>
+    <fieldset data-facet="state">
+      <legend>State</legend>
+      <select id="facet-state"><option value="">Any state</option></select>
+    </fieldset>
+
+    <fieldset>
+      <legend>Business type</legend>
+      <div class="opts">
+        <label><input type="checkbox" id="women_owned"> Woman owned</label>
+        <label><input type="checkbox" id="hubzone"> HUBZone</label>
+        <label><input type="checkbox" id="disadvantaged"> Disadvantaged</label>
+      </div>
+    </fieldset>
+  </aside>
+
+  <section class="results">
+    <div class="toolbar">
+      <div class="summary" id="summary">Enter a query to begin.</div>
+      <div class="controls">
+        <label for="sort">Sort</label>
+        <select id="sort">
+          <option value="relevance">Relevance</option>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="amount">Award size</option>
+        </select>
+        <a id="export" class="btn-ghost" href="#">Export CSV</a>
+      </div>
+    </div>
+
+    <ol class="hits" id="hits"></ol>
+
+    <div class="more">
+      <button type="button" id="load-more" hidden>Load more</button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap site-footer">
+  <p>Data: <a href="https://www.sbir.gov/awards" rel="noopener">SBIR.gov award database</a>, refreshed by rerunning
+    <code>python -m sbir setup --force</code>. Awards are public record; this tool only reindexes them.</p>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
