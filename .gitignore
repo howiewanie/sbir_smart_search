@@ -1,0 +1,18 @@
+# Python virtual environment
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Local Qdrant runtime storage
+.qdrant-runtime/
+
+# Runtime logs & results
+*.log
+sbir_indexing.log
+results/
+SBIR_Results/
+
+# Local dev smoke-test artifacts (not part of the app)
+dev_smoke_test.py
+sample_data/
