@@ -127,9 +127,9 @@ Measured on a four-core cloud VM with no GPU, against the full 201k-award index:
 | --- | --- |
 | Building the index | ~23 min (about 150 awards/sec) |
 | Embedding one query | ~7 ms |
-| Semantic search | ~450-600 ms |
-| Semantic search with filters | ~460 ms |
-| Company lookup | ~50 ms |
+| Semantic search | ~350-500 ms |
+| Semantic search with filters | ~400-500 ms |
+| Company lookup | ~40-60 ms |
 
 Embedded Qdrant compares the query against every vector, so semantic search cost scales
 with corpus size. That is fine for a single user on a laptop.
