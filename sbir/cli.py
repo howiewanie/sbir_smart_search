@@ -80,6 +80,53 @@ def cmd_search(args) -> None:
         print()
 
 
+def cmd_derive(args) -> None:
+    from . import derive
+
+    print("Rebuilding derived artifacts from the CSV...")
+    for name, count in derive.build_all().items():
+        print(f"  {name:15} {count:,}")
+
+
+def cmd_eval(args) -> None:
+    from .evaluation import harness
+    from .evaluation import labels as label_store
+
+    if args.action == "coverage":
+        cov = label_store.coverage(label_store.load_labels())
+        print(f"queries      {cov['queries']}")
+        print(f"judgements   {cov['judgements']:,}")
+        print(f"relevant     {cov['relevant']:,}")
+        print(f"adjacent     {cov['adjacent']:,}")
+        if cov["queries_without_relevant"]:
+            print(f"unusable     {cov['queries_without_relevant']}")
+        return
+
+    if args.action == "show":
+        # For reviewing and correcting grades, which the label file invites.
+        pool = label_store.load_pool()
+        graded = label_store.load_labels()
+        entry = pool.get(args.query)
+        if entry is None:
+            raise SystemExit(f"Unknown query {args.query!r}. Known: {sorted(pool)}")
+        marks = graded.get(args.query, {})
+        print(f"{args.query}: {entry['query']}")
+        for candidate in entry["candidates"]:
+            grade = marks.get(candidate["id"], 0)
+            print(f"  [{grade}] {candidate['id']:>6} {candidate['title'][:78]}")
+        return
+
+    from .search import SearchEngine
+
+    engine = SearchEngine()
+    if args.action == "pool":
+        label_store.save_pool(harness.build_pool(engine))
+        print("Pool written. Grade it before running.")
+        return
+
+    print(harness.report(harness.run(engine, depth=args.depth), "B0 dense baseline"))
+
+
 def cmd_serve(args) -> None:
     import uvicorn
 
@@ -137,6 +184,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("status", help="show what is downloaded and indexed")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("derive", help="rebuild company stats and term frequencies")
+    p.set_defaults(func=cmd_derive)
+
+    p = sub.add_parser("eval", help="internal retrieval evaluation")
+    p.add_argument("action", choices=("pool", "run", "coverage", "show"))
+    p.add_argument("--query", help="query id, for `show`")
+    p.add_argument("--depth", type=int, default=50)
+    p.set_defaults(func=cmd_eval)
 
     return parser
 

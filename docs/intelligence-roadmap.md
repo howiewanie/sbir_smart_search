@@ -333,6 +333,35 @@ Freeze the current behaviour as **B0** before changing anything:
 
 B0 is the number every experiment reports against. Without it, "better" is an opinion.
 
+### B0 measured, 2026-08-18
+
+24 golden queries, 1,671 graded judgements, 743 awards graded relevant.
+
+| Metric | B0 |
+| --- | --- |
+| Recall@10 | 0.312 |
+| Recall@20 | 0.540 |
+| **Recall@50** | **0.761** |
+| nDCG@10 | 0.909 |
+| MRR | 1.000 |
+| Precision@10 | 0.854 |
+| Latency mean / max | 415 / 531 ms |
+
+**This reorders the experiment plan.** MRR is 1.000 — the first result is relevant on
+every one of the 24 queries — and precision@10 is 0.854. The top of the ranking is
+already close to saturated, so a reranker has almost nothing to reorder. Experiment 2 as
+originally written aimed at exactly that, and the measurement says it is the wrong target.
+
+The headroom is entirely in coverage: a quarter of the known-relevant awards never appear
+in the top 50. Worst cases are carbon capture sorbents (0.39), quantum sensing and
+magnetometry (0.55) and satellite ground terminals (0.58). Carbon capture is a genuine
+failure rather than an artefact — 36 awards are graded relevant and only 14 are retrieved
+in 50 slots.
+
+One caveat on the metric: recall@50 is bounded above where a query has more than 50
+relevant awards. Additive manufacturing (53 relevant) can reach at most 0.94. That affects
+the three largest queries and none of the weak ones.
+
 ---
 
 ## 7. Evaluation
