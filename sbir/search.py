@@ -98,8 +98,8 @@ class Filters:
         return models.Filter(must=must) if must else None
 
 
-def _recency(year: int, current_year: int) -> float:
-    age = max(0, current_year - year)
+def _recency(year: int, reference_year: int) -> float:
+    age = max(0, reference_year - year)
     return max(0.0, 1.0 - age / config.RECENCY_HALF_LIFE_YEARS)
 
 
@@ -125,10 +125,23 @@ class SearchEngine:
             )
         self.company_ids = store.load_companies()
         self.company_names = [(name.lower(), name) for name in self.company_ids]
+        # Recency is measured against the newest year the data actually covers,
+        # not against today. Anchoring to the wall clock would quietly bleed
+        # recency credit out of the whole corpus as the export ages, and would
+        # change ranking on a refresh for reasons unrelated to the refresh.
+        self.reference_year = (
+            self.coverage.get("complete_through")
+            or self.coverage.get("last_year")
+            or datetime.now().year
+        )
 
     @property
     def facets(self) -> dict:
         return self.meta.get("facets", {})
+
+    @property
+    def coverage(self) -> dict:
+        return self.facets.get("coverage", {})
 
     def stats(self) -> dict:
         return {
@@ -138,6 +151,8 @@ class SearchEngine:
             "backend": store.describe_backend(),
             "built_at": self.meta.get("built_at"),
             "years": self.facets.get("years"),
+            "coverage": self.coverage,
+            "reference_year": self.reference_year,
             "totals": self.facets.get("totals", {}),
         }
 
@@ -243,13 +258,13 @@ class SearchEngine:
 
     def _rank(self, hits: list[dict], query: str) -> None:
         """Blend similarity, recency and a light keyword bonus, then sort."""
-        current_year = datetime.now().year
+        reference_year = self.reference_year
         terms = set(dataset.tokenize(query))
         weight = config.RECENCY_WEIGHT
 
         for hit in hits:
             similarity = hit["similarity"] or 0.0
-            recency = _recency(hit["year"], current_year)
+            recency = _recency(hit["year"], reference_year)
             bonus = 0.0
             if terms:
                 title_terms = set(dataset.tokenize(hit["title"]))

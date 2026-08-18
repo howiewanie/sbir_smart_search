@@ -133,13 +133,61 @@ def embedding_text(row: pd.Series) -> str:
     return ". ".join(p for p in parts if p)[:2000]
 
 
+# A trailing year holding less than this share of recent typical volume is
+# treated as still filling up rather than as a real decline in funding.
+COMPLETE_YEAR_RATIO = 0.4
+RECENT_WINDOW_YEARS = 10
+
+
+def coverage(frame: pd.DataFrame) -> dict:
+    """Work out how far the data actually runs.
+
+    The export trails real-world activity, and by an amount that changes every
+    time it is refreshed. Nothing should hardcode a cutoff year: the last
+    trustworthy year is derived here and everything downstream reads it.
+
+    ``complete_through`` is the most recent year whose award count looks like a
+    normal year. Years after it are reported separately as partial, because
+    plotting them as-is draws a funding collapse that is an artefact of the
+    export rather than anything the government did.
+    """
+    by_year = frame["year"].value_counts().sort_index()
+    counts = {int(y): int(n) for y, n in by_year.items()}
+    if not counts:
+        return {"first_year": None, "last_year": None, "complete_through": None,
+                "partial_years": [], "by_year": {}}
+
+    years = sorted(counts)
+    first_year, last_year = years[0], years[-1]
+
+    window = [counts[y] for y in years if y > last_year - RECENT_WINDOW_YEARS]
+    reference = float(pd.Series(window).median()) if window else 0.0
+
+    complete_through = last_year
+    if len(window) >= 3 and reference > 0:
+        threshold = reference * COMPLETE_YEAR_RATIO
+        for year in reversed(years):
+            if counts[year] >= threshold:
+                complete_through = year
+                break
+
+    return {
+        "first_year": first_year,
+        "last_year": last_year,
+        "complete_through": complete_through,
+        "partial_years": [y for y in years if y > complete_through],
+        "by_year": counts,
+    }
+
+
 def build_facets(frame: pd.DataFrame) -> dict:
     """Distinct filter values plus a few headline numbers for the UI."""
     facets = {
         field: sorted(v for v in frame[field].unique() if v)
         for field in FACET_FIELDS
     }
-    facets["years"] = [int(frame["year"].min()), int(frame["year"].max())]
+    facets["coverage"] = coverage(frame)
+    facets["years"] = [facets["coverage"]["first_year"], facets["coverage"]["last_year"]]
     facets["totals"] = {
         "awards": int(len(frame)),
         "companies": int(frame["company"].nunique()),

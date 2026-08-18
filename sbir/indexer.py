@@ -96,7 +96,11 @@ def build(since: int | None = None, limit: int | None = None,
 
     rate = done / elapsed if elapsed else 0
     print(f"\nIndexed {done:,} awards in {timedelta(seconds=int(elapsed))} ({rate:.0f}/s)")
-    print(f"Coverage: {facets['years'][0]}-{facets['years'][1]}, "
+    cov = facets["coverage"]
+    print(f"Coverage: {cov['first_year']}-{cov['complete_through']}, "
           f"{facets['totals']['companies']:,} companies, "
           f"${facets['totals']['funding'] / 1e9:.1f}B awarded")
+    if cov["partial_years"]:
+        thin = ", ".join(f"{y} ({cov['by_year'][y]:,})" for y in cov["partial_years"])
+        print(f"Partial years, excluded from the coverage range: {thin}")
     return meta

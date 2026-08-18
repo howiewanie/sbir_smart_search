@@ -42,12 +42,18 @@ def cmd_status(args) -> None:
     if not meta:
         print("Index        none -- run: python -m sbir index")
         return
-    totals = meta.get("facets", {}).get("totals", {})
-    years = meta.get("facets", {}).get("years", [None, None])
+    facets = meta.get("facets", {})
+    totals = facets.get("totals", {})
+    cov = facets.get("coverage", {})
     print(f"Index        {meta['awards']:,} awards, built {meta['built_at']}")
     print(f"Model        {meta['model']} ({meta['dimension']}d)")
-    print(f"Coverage     {years[0]}-{years[1]}, {totals.get('companies', 0):,} companies, "
+    print(f"Coverage     {cov.get('first_year')}-{cov.get('complete_through')}, "
+          f"{totals.get('companies', 0):,} companies, "
           f"{_money(totals.get('funding', 0))} awarded")
+    if cov.get("partial_years"):
+        thin = ", ".join(f"{y} ({cov['by_year'][str(y)]:,})" if str(y) in cov.get("by_year", {})
+                         else str(y) for y in cov["partial_years"])
+        print(f"Still filling {thin}")
 
 
 def cmd_search(args) -> None:

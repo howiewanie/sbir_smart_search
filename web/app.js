@@ -196,11 +196,22 @@ async function loadIndex() {
 
   const totals = stats.totals || {};
   const years = stats.years || [];
+  const cov = stats.coverage || {};
+  // Report the range the data actually covers. A trailing year that is still
+  // filling up would otherwise be advertised as full coverage on the strength
+  // of a handful of records.
+  const from = cov.first_year ?? years[0];
+  const through = cov.complete_through ?? years[1];
   el("dataset").innerHTML =
     `${(totals.awards || stats.awards).toLocaleString()} awards &middot;
-     ${years[0]}&ndash;${years[1]} &middot;
+     ${from}&ndash;${through} &middot;
      ${(totals.companies || 0).toLocaleString()} companies &middot;
      $${((totals.funding || 0) / 1e9).toFixed(1)}B`;
+  if (cov.partial_years && cov.partial_years.length) {
+    el("dataset").title =
+      `${cov.partial_years.join(", ")} present but incomplete in this export, ` +
+      `so excluded from the coverage range.`;
+  }
 
   const facets = await fetch("/api/facets").then((r) => r.json());
   for (const facet of CHECKBOX_FACETS) buildCheckboxes(facet, facets[facet] || []);
