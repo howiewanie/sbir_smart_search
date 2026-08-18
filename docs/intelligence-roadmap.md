@@ -121,8 +121,83 @@ companies, not titles, and it is a refinement rather than a blocker.
 
 `SearchEngine.search` returns a *pool*, capped at 200–2,000 candidates, and reports
 `total = len(hits)`. The UI renders that as "Showing 20 of 200 matches". The 200 is the
-cap, not a measurement of how many awards match. Nothing downstream should aggregate over
-it until the evidence set is defined properly.
+cap, not a measurement of how many awards match.
+
+Re-measured 2026-08-18, the behaviour is worse than "a cap": the reported total moves with
+the page size, because the pool is sized from `offset + limit`.
+
+| requested `limit` | reported `total` |
+| --- | --- |
+| 5 | 200 |
+| 20 | 200 |
+| 50 | 200 |
+| 100 | 400 |
+
+The same query "matches" 200 or 400 awards depending on how many results the caller asked
+to see. Nothing downstream should aggregate over it until the evidence set is defined.
+
+### 2.7 The corpus stops roughly three years short of today
+
+This is the finding with the largest product consequences, and it was missed on the first
+pass.
+
+| Award year | Awards |
+| --- | --- |
+| 2021 | 6,878 |
+| 2022 | 6,646 |
+| 2023 | 6,283 |
+| 2024 | **23** |
+| 2025 | **0** |
+
+The latest parseable `Proposal Award Date` is 2024-10-01, and only 27 records fall in the
+final year of the corpus. Against a mid-2026 wall clock the usable corpus ends in **2023**.
+
+Three consequences:
+
+1. **"What has changed recently" cannot be answered from SBIR data at all.** External
+   enrichment is not the optional garnish it was filed as in §9 — it is the only possible
+   source for that section. Until it exists, the section should be absent rather than
+   filled with three-year-old awards.
+2. **A funding-over-time chart is actively misleading.** Plotted naively, every query shows
+   a collapse to near zero in 2024. That is the export's cutoff, not a change in government
+   behaviour, and it is exactly the kind of confident-looking artefact a strategy user would
+   act on. Either end the axis at the last complete year and label it, or omit the chart.
+3. **The recency term in ranking is mistuned.** `0.10 × recency` currently treats a 2023
+   award as new. The decay is defined against `datetime.now()`, so the whole corpus drifts
+   further into the past every day the export is not refreshed.
+
+### 2.8 Company names need no entity-resolution layer
+
+Expected to be a problem; measured, and it is not. Of 32,402 distinct company strings,
+aggressive suffix normalisation (stripping Inc/LLC/Corporation/Technologies) collapses only
+**305**, or 0.9%.
+
+Worse, spot-checking the collapses shows the normaliser causing damage rather than fixing
+it: it merges `ENGINEERING TECHNOLOGIES LLC` with `Engineering Inc`, and
+`RESEARCH APPLICATIONS, INC.` with `Research Applications Corporation` — plausibly
+different firms. The naive fix is net negative.
+
+Company rollups should therefore key on the **exact** company string. Fuzzy entity
+resolution is a technique this corpus does not need, and skipping it removes a whole class
+of silent aggregation errors.
+
+### 2.9 Field coverage bounds what can be claimed
+
+| Field | Filled |
+| --- | --- |
+| Agency, Phase, Program, State, City, Award Amount | 100% |
+| Abstract | 86.4% |
+| Contract | 74.9% |
+| Branch | 65.2% |
+| Company Website | 53.7% |
+| Topic Code | 45.7% |
+| RI Name (STTR research partner) | 16.7% |
+
+Agency, phase, program, state and funding aggregates are safe to state flatly. Branch-level
+claims cover roughly two thirds of awards and need saying so. `Topic Code` at 45.7% is too
+sparse to be the primary key for phase-progression joins — company+title reaches 40,541
+linked projects where company+topic reaches 29,856. `RI Name` is a real STTR ecosystem
+signal but only for the sixth of the corpus that carries it.
 
 ---
 
@@ -218,8 +293,10 @@ Then a single scrolling page, ordered so it is useful before it is finished:
 
 1. **Orientation** — title, 2–4 sentence summary, and four deterministic figures
    (awards examined, identified funding, agencies, companies).
-2. **Government signals** — funding over time, awards by agency, phase mix. Charts only
-   where the shape carries information the sentence cannot.
+2. **Government signals** — awards by agency, phase mix, and activity over time. Charts only
+   where the shape carries information the sentence cannot, and the time axis must stop at
+   the last complete year in the corpus (§2.7) or it will draw a funding collapse that does
+   not exist.
 3. **Evidence** — award cards, collapsed, expandable to the abstract and full provenance.
 4. **Companies and ecosystem** — recurring recipients, Phase I→II progression, university
    partners.
@@ -287,12 +364,26 @@ judge it against.
 
 ## 8. Experiments, in order
 
-**Experiment 1 — the embedding window.** The measured deficiency in §2.2. Compare 128
-tokens against 256, and against chunking each award into overlapping passages with
-max-pooling to the award. Metric: Recall@50 and nDCG@10 on the golden set. Cost: index build
-time (23 min → ~72 min at 256 tokens) and, for chunking, roughly 2.5× the vectors and a
-larger index. Keep only if recall moves materially; if 256 tokens captures most of the gain,
-prefer it over chunking for the operational simplicity.
+**Experiment 1 — the embedding window.** The measured deficiency in §2.2.
+
+Run it on a **stratified 50k-award sample rather than the full corpus**. A full re-index at
+256 tokens costs ~72 minutes per configuration, and the hypothesis — that truncation hides
+retrievable content — is testable at a fraction of that. Sampling to 50k puts a build at
+roughly 6 minutes at 128 tokens and 15 at 256, so three configurations fit in under an
+hour and the experiment can be rerun after every change instead of once.
+
+The sample must contain the graded awards for every golden query, plus a random remainder,
+so recall is measured against a realistic amount of distractor material.
+
+| Configuration | What it tests |
+| --- | --- |
+| 128 tokens (B0) | current behaviour |
+| 256 tokens | does the truncated half carry retrievable signal |
+| overlapping chunks, max-pooled to the award | does passage granularity beat a longer window |
+
+Metric: Recall@50 primary, nDCG@10 secondary. Promote to a full-corpus build only if the
+sample shows a material gain. If 256 tokens captures most of it, prefer that over chunking
+— chunking roughly 2.5×'s the vector count and complicates every downstream id join.
 
 **Experiment 2 — a calibrated relevance gate.** The obstacle in §2.1. A cross-encoder over
 the top ~200 candidates produces a query-independent relevance decision in a way raw cosine
@@ -335,7 +426,19 @@ behind deterministic validation. Requires an LLM API key.
 rendered to PDF. No new research pass.
 
 **Stage 6 — external enrichment.** Recent public signals as a separate, clearly-attributed
-evidence source that is allowed to fail without degrading the page.
+evidence source that is allowed to fail without degrading the page. Promoted in importance
+by §2.7: with the corpus ending in 2023 this is the only possible source of current signal,
+so "Recent developments" must be omitted from the page until this stage lands rather than
+being approximated from old awards.
 
 Stage 3 is the point at which the product stops being a search engine. It is worth reaching
 before any model is wired in.
+
+### Credentials gate the second half
+
+Checked 2026-08-18: no LLM key (OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere)
+and no web-search key (Tavily, Serp, Bing, Brave, Perplexity) is present in the environment.
+
+Stages 1–3 need none of them and are the stages that turn this into an intelligence
+product. Stages 4–6 are blocked until a key is supplied. This is a reason to build the
+deterministic page first, not merely an argument that it is prudent.
