@@ -1,13 +1,15 @@
-# SBIR Smart Search
+# SBIR Research Intelligence
 
-Semantic search across the public SBIR/STTR award database — 201,000+ awards from
-1983 to today, searchable by what the research actually *is* rather than by keyword.
+Ask a question. Get a report on what the U.S. government has actually funded in
+that area — who won the work, which agencies paid, how the field matured, and
+the awards themselves. Then download the whole thing as PDF or Word.
 
-Ask for "lightweight batteries for small drones" and you get awards about energy-dense
-power systems for UAVs, even when they never use those words. Everything runs locally:
-one command downloads the data and builds the index, a second starts the web UI.
+No API key. No account. Clone, install, run.
 
-![SBIR Smart Search](docs/screenshot.png)
+![Intelligence report](docs/report.png)
+
+[Watch the 2026 walkthrough](docs/sbir_search_2026.mp4) (short MP4 you can also
+upload to YouTube).
 
 ## Quick start
 
@@ -20,32 +22,59 @@ cd sbir_smart_search
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python -m sbir setup      # downloads ~350 MB from SBIR.gov, then builds the index
+python -m sbir setup      # downloads the award CSV, then builds the index
 python -m sbir serve      # http://127.0.0.1:8000
 ```
 
-`setup` is a one-time step. On a four-core laptop it embeds the full corpus in a little
-over 20 minutes at roughly 150 awards/second; a GPU cuts that to a couple of minutes.
-In a hurry:
+`setup` is a one-time step. On a four-core laptop it embeds the full corpus in a
+little over 20 minutes; a GPU cuts that to a couple of minutes. In a hurry:
 
 ```bash
 python -m sbir setup --since 2020    # ~27k recent awards, about 3 minutes
 ```
 
-There is no database server to install and no Node toolchain. Qdrant runs in embedded
-mode out of the box, and the front end is plain HTML, CSS and JavaScript.
+There is no database server to install and no Node toolchain. Qdrant runs in
+embedded mode. The front end is plain HTML, CSS and JavaScript.
+
+## The data (read this)
+
+Reports are built from a **downloaded bulk file**, not from a live SBIR.gov API.
+
+The official award API has not been reliable. Until it is, `python -m sbir setup`
+pulls the public CSV export:
+
+[https://data.www.sbir.gov/awarddatapublic/award_data.csv](https://data.www.sbir.gov/awarddatapublic/award_data.csv)
+
+If that API starts working, fetch can be pointed at it. Right now the downloaded
+file is the source of truth.
+
+What that means in practice:
+
+- **The export lags real awards.** The copy indexed here is complete through
+  **2023**. 2024 is present but only a handful of rows, so the app treats it as
+  incomplete and keeps it out of totals and charts. That drop-off is a data
+  hole, not a collapse in funding.
+- **Historical funding is not current demand.** An agency that awarded work in
+  2019 is a lead to investigate, not evidence of an open solicitation.
+- Roughly 201,000 awards survive cleaning (title or abstract, plus a usable
+  year). About 14% have a title but no abstract; they can still surface, they
+  just match less precisely.
+- Re-download a newer export with `python -m sbir setup --force`.
+
+SBIR and STTR are small-business programs, so the large primes are not in here.
+Searching for Lockheed or Raytheon correctly returns nothing.
 
 ## What you get
 
-- **Meaning-based search.** Queries are embedded with a sentence-transformer and compared
-  against every award abstract by cosine similarity.
-- **Filters that matter.** Agency, branch, phase, program, state, award year, dollar
-  amount, and set-aside status (woman-owned, HUBZone, disadvantaged).
-- **Company lookup.** Switch the mode selector to *Company* to pull every award a firm
-  has ever won.
-- **Shareable results.** The URL always reflects the current query and filters.
-- **CSV export** of whatever is on screen, filters included.
-- **A terminal client**, if you would rather not leave the shell.
+- A research report: funding, agencies, phases, themes, companies, and the
+  underlying awards.
+- **Download PDF** or **Download Word** of that same report. Every number in
+  the file is counted from the awards on screen, not written by a model.
+- A printable two-page brief of the page, if you would rather print than save.
+- Shareable URLs. The query lives in the address bar.
+- A terminal client, if you would rather not leave the shell.
+
+![Landing page](docs/landing.png)
 
 ## Command line
 
@@ -58,41 +87,21 @@ python -m sbir status                     # what is downloaded and indexed
 python -m sbir search QUERY [options]
 ```
 
-Searching without the browser:
-
 ```bash
 python -m sbir search "solid state battery" --agency "Department of Energy" -n 5
 python -m sbir search "hypersonics" --phase "Phase II" --year-min 2018 --abstracts
-python -m sbir search "luna innovations" --mode company --sort amount
 ```
-
-Worth knowing: SBIR and STTR are small-business programs, so the large primes are not in
-here. Searching for Lockheed or Raytheon correctly returns nothing. The most prolific
-awardees are firms like Physical Optics, Physical Sciences, Creare and Luna Innovations.
 
 ## How it works
 
-![Process flow](sbir_smart_search_flow.png)
+The award CSV is normalised, each title and abstract is embedded, and those
+vectors go into Qdrant. A query is embedded the same way. The closest awards
+are trimmed to a readable evidence set (duplicate filings collapsed, any one
+company capped), then the report is arithmetic over that set: funding, agencies,
+phases, themes, companies, and a short reading of those figures.
 
-The award CSV is normalised into a flat table, the title and abstract of each award are
-embedded into a 384-dimension vector, and those vectors go into Qdrant alongside the
-metadata used for filtering. A query is embedded the same way and compared by cosine
-similarity, then the shortlist is re-scored before it reaches you.
-
-## How ranking works
-
-A query returns a pool of nearest neighbours, which is then re-scored:
-
-```
-score = 0.90 x cosine_similarity
-      + 0.10 x recency
-      + 0.05 x share of query words appearing in the title
-```
-
-Recency decays linearly and bottoms out at 20 years, so a 2024 award edges out a 2005 one
-when the two are equally relevant, but a genuinely better match still wins. The keyword
-term is deliberately small: it rewards an obvious literal hit without letting keyword
-stuffing beat meaning. Tune the balance with `SBIR_RECENCY_WEIGHT`.
+No language model is involved. The product works with the downloaded file
+alone.
 
 ## Configuration
 
@@ -101,6 +110,7 @@ Every setting is an environment variable. The defaults are what most people want
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SBIR_DATA_DIR` | `./data` | Where the CSV and vector index live |
+| `SBIR_AWARD_DATA_URL` | the official SBIR.gov CSV | Override only if you host a copy |
 | `SBIR_MODEL_NAME` | `sentence-transformers/all-MiniLM-L6-v2` | Any sentence-transformers model |
 | `SBIR_MAX_SEQ_LENGTH` | `128` | Tokens embedded per award |
 | `SBIR_BATCH_SIZE` | `64` | Embedding batch size |
@@ -108,48 +118,11 @@ Every setting is an environment variable. The defaults are what most people want
 | `SBIR_QDRANT_URL` | unset | Point at a Qdrant server instead of embedded mode |
 | `SBIR_PORT` | `8000` | Web UI port |
 
-Swapping the model is a one-liner, though you have to rebuild the index afterwards since
-the vectors change shape:
-
-```bash
-SBIR_MODEL_NAME=BAAI/bge-small-en-v1.5 python -m sbir index
-```
-
-`all-MiniLM-L6-v2` is the default because it is small, quick on CPU, and good enough for
-technical abstracts. `bge-base-en-v1.5` and `all-mpnet-base-v2` score better on retrieval
-benchmarks at roughly three times the indexing cost.
-
-### Performance
-
-Measured on a four-core cloud VM with no GPU, against the full 201k-award index:
-
-| Operation | Time |
-| --- | --- |
-| Building the index | ~23 min (about 150 awards/sec) |
-| Embedding one query | ~7 ms |
-| Semantic search | ~350-500 ms |
-| Semantic search with filters | ~400-500 ms |
-| Company lookup | ~40-60 ms |
-
-Embedded Qdrant compares the query against every vector, so semantic search cost scales
-with corpus size. That is fine for a single user on a laptop.
-
-Two things stop filters and company lookups from being much slower than that. Embedded
-Qdrant evaluates a filter point by point in Python, which measured about five times the
-cost of a plain scan, so a filtered search instead pulls a wider unfiltered pool and
-narrows it locally. That returns the same rows — anything outside the pool already scored
-below everything in it — and only falls back to a true filtered query when the filter is
-narrow enough to exhaust the pool. Company lookups skip the vector store almost entirely:
-names resolve through a dictionary built at index time, and the awards come back by id.
-
-If half a second is too slow for your use, run a Qdrant server. It builds an HNSW index
-and answers approximate queries without touching every vector.
-
 ### Running against a Qdrant server
 
-Embedded mode keeps the index in a local directory, which is ideal for one person on one
-machine. For a shared deployment, point the app at a real server and payload indexes get
-created automatically:
+Embedded mode keeps the index in a local directory, which is ideal for one
+person on one machine. Only one process can open it at a time. For a shared
+deployment:
 
 ```bash
 docker run -p 6333:6333 -v "$(pwd)/qdrant_storage:/qdrant/storage" qdrant/qdrant
@@ -159,53 +132,23 @@ SBIR_QDRANT_URL=http://localhost:6333 python -m sbir serve
 
 ## HTTP API
 
-The UI is a client of a small JSON API, so anything it does you can script.
-
 | Endpoint | Notes |
 | --- | --- |
-| `GET /api/search` | `q`, `mode`, `sort`, `limit`, `offset`, plus any filter |
-| `GET /api/export.csv` | Same parameters, returns a CSV attachment |
-| `GET /api/facets` | Filter values present in the index |
+| `GET /api/research?q=` | The intelligence report as JSON |
+| `GET /api/research.pdf?q=` | The same report as a PDF attachment |
+| `GET /api/research.docx?q=` | The same report as a Word attachment |
+| `GET /api/search` | Ranked award list (legacy search) |
 | `GET /api/stats` | Index size, model, coverage |
-| `GET /api/companies?q=` | Company name suggestions |
 | `GET /api/docs` | Generated OpenAPI docs |
 
 ```bash
-curl "localhost:8000/api/search?q=quantum%20sensing&phase=Phase%20II&limit=3"
-curl "localhost:8000/api/export.csv?q=biosensor&year_min=2019" -o biosensor.csv
+curl "localhost:8000/api/research?q=quantum%20sensing"
+curl "localhost:8000/api/research.pdf?q=biosensor" -o biosensor.pdf
+curl "localhost:8000/api/research.docx?q=biosensor" -o biosensor.docx
 ```
 
-## Notes on the data
-
-`award_data.csv` is the official bulk export from SBIR.gov. It is refreshed upstream
-periodically; `python -m sbir setup --force` pulls a new copy and reindexes.
-
-The export carries about 207,000 rows; roughly 201,000 survive cleaning. The rest are
-dropped for having no title, no abstract, or no usable award year. About 14% of the
-awards that remain have a title but no abstract — they are still indexed and can surface,
-they just match less precisely.
-
-The full embedded index occupies about 1.2 GB on disk. Indexing peaks around 3.5 GB of
+The full index occupies about 1.2 GB on disk. Indexing peaks around 3.5 GB of
 RAM, so 8 GB is a comfortable minimum.
-
-One caveat with embedded mode: the index directory is opened exclusively, so only one
-process can use it at a time. Running `python -m sbir search` while `serve` is up will
-fail with a lock error. Stop the server first, or run a Qdrant server as described above
-and let both share it.
-
-## Project layout
-
-```
-sbir/
-  cli.py        command line entry point
-  dataset.py    download and clean the SBIR.gov export
-  embedder.py   sentence-transformers wrapper
-  indexer.py    CSV -> vectors
-  search.py     query planning, filters, ranking
-  store.py      Qdrant access (embedded or server)
-  api.py        FastAPI routes
-web/            the front end: one HTML file, one stylesheet, one script
-```
 
 ## License
 

@@ -62,8 +62,8 @@ takes a full index build from ~72 minutes down to ~23.
 
 ### Testing
 
-There is no unit test suite. Validate changes by running the app and exercising the API.
-A regression script covering the endpoints, every filter, sorting, pagination and CSV
-export is kept outside the repo at `/tmp/regression.py` in this VM; it is short enough to
-rewrite from `README.md`'s API table if it is missing. `./.venv/bin/ruff check sbir/` is
-available for a quick lint (ruff is installed in the venv but is not a project dependency).
+Validate changes by running the app and exercising the API, including
+`GET /api/research`, `GET /api/research.pdf`, and `GET /api/research.docx`.
+Those last two are the same deterministic payload laid out as files; they do
+not call a language model. `./.venv/bin/ruff check sbir/` is available for a
+quick lint (ruff is installed in the venv but is not a project dependency).

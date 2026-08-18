@@ -486,26 +486,23 @@ version of the intelligence page: orientation figures, charts, evidence cards, e
 all computed rather than generated. This is genuinely useful with no model involved, and it
 de-risks the product from LLM availability.
 
-**Stage 4 — grounded synthesis.** Summary, themes, interpretation over the evidence set,
-behind deterministic validation. Requires an LLM API key.
+**Stage 4 — grounded LLM synthesis.** Cancelled. The page already states what the
+figures show using templates filled with counted values. An LLM key is not required.
 
-**Stage 5 — the brief.** Structured report built from the assembled evidence, validated,
-rendered to PDF. No new research pass.
+**Stage 5 — the takeaway file.** Done. The same deterministic payload is laid out as a
+downloadable PDF and a Word document (`GET /api/research.pdf`, `GET /api/research.docx`),
+covering every section of the on-screen report. Print still produces a compact brief of
+the page. No second research pass, no model.
 
-**Stage 6 — external enrichment.** Recent public signals as a separate, clearly-attributed
-evidence source that is allowed to fail without degrading the page. Promoted in importance
-by §2.7: with the corpus ending in 2023 this is the only possible source of current signal,
-so "Recent developments" must be omitted from the page until this stage lands rather than
-being approximated from old awards.
+**Stage 6 — external enrichment.** Cancelled for the same reason as Stage 4: it needs a
+search/news API key, and the product is the historical award record. Recent public
+signals stay off the page rather than being approximated from old awards.
 
-Stage 3 is the point at which the product stops being a search engine. It is worth reaching
-before any model is wired in.
+Stages 1–3 plus file export are the shipped product. They run with no API key.
 
-### Credentials gate the second half
+### Credentials are not required
 
-Checked 2026-08-18: no LLM key (OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere)
-and no web-search key (Tavily, Serp, Bing, Brave, Perplexity) is present in the environment.
-
-Stages 1–3 need none of them and are the stages that turn this into an intelligence
-product. Stages 4–6 are blocked until a key is supplied. This is a reason to build the
-deterministic page first, not merely an argument that it is prudent.
+Checked 2026-08-18: no LLM key and no web-search key is present, and none is needed.
+The award data itself comes from the official SBIR.gov **CSV export**, not from a live
+SBIR API — that API has not been reliable. If it becomes usable, fetch can be pointed
+at it later; until then `python -m sbir setup` downloads the bulk file.
