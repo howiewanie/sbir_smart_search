@@ -6,10 +6,10 @@ import csv
 import io
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config
+from . import config, report
 from .search import Filters, SearchEngine
 
 WEB_DIR = config.PROJECT_ROOT / "web"
@@ -87,6 +87,19 @@ def research(
     hubzone: bool = False,
     disadvantaged: bool = False,
 ):
+    return _research_payload(
+        q, agency, branch, phase, program, state, year_min, year_max,
+        amount_min, amount_max, women_owned, hubzone, disadvantaged,
+    )
+
+
+def _research_payload(
+    q: str,
+    agency: list[str], branch: list[str], phase: list[str], program: list[str],
+    state: list[str], year_min: int | None, year_max: int | None,
+    amount_min: float | None, amount_max: float | None,
+    women_owned: bool, hubzone: bool, disadvantaged: bool,
+) -> dict:
     try:
         return engine().research(
             q,
@@ -94,7 +107,66 @@ def research(
                      amount_min, amount_max, women_owned, hubzone, disadvantaged),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _file_response(body: bytes, media_type: str, query: str, ext: str) -> Response:
+    name = f"sbir_{report.slug(query)}.{ext}"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@app.get("/api/research.pdf")
+def research_pdf(
+    q: str,
+    agency: list[str] = Query(default=[]),
+    branch: list[str] = Query(default=[]),
+    phase: list[str] = Query(default=[]),
+    program: list[str] = Query(default=[]),
+    state: list[str] = Query(default=[]),
+    year_min: int | None = None,
+    year_max: int | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    women_owned: bool = False,
+    hubzone: bool = False,
+    disadvantaged: bool = False,
+):
+    payload = _research_payload(
+        q, agency, branch, phase, program, state, year_min, year_max,
+        amount_min, amount_max, women_owned, hubzone, disadvantaged,
+    )
+    return _file_response(report.pdf_bytes(payload), "application/pdf", q, "pdf")
+
+
+@app.get("/api/research.docx")
+def research_docx(
+    q: str,
+    agency: list[str] = Query(default=[]),
+    branch: list[str] = Query(default=[]),
+    phase: list[str] = Query(default=[]),
+    program: list[str] = Query(default=[]),
+    state: list[str] = Query(default=[]),
+    year_min: int | None = None,
+    year_max: int | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    women_owned: bool = False,
+    hubzone: bool = False,
+    disadvantaged: bool = False,
+):
+    payload = _research_payload(
+        q, agency, branch, phase, program, state, year_min, year_max,
+        amount_min, amount_max, women_owned, hubzone, disadvantaged,
+    )
+    return _file_response(
+        report.docx_bytes(payload),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        q, "docx",
+    )
 
 
 @app.get("/api/search")

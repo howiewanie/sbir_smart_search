@@ -56,62 +56,9 @@ function columnChart(target, points) {
       .join("")}</div>`;
 }
 
-/* ---------- interpretation, derived from the figures ---------- */
-
 function interpretation(d) {
-  const out = [];
-  const t = d.totals;
-  const [top, second] = d.agencies;
-
-  if (top) {
-    const share = Math.round((top.awards / t.awards) * 100);
-    out.push(
-      `${esc(top.name)} accounts for ${top.awards} of the ${t.awards} awards examined (${share}%)` +
-      (second ? `, ahead of ${esc(second.name)} at ${second.awards}.` : ".") +
-      ` Historical concentration of this kind suggests ${esc(top.name)} is worth investigating as a route to market, though it does not evidence current procurement demand.`
-    );
-  }
-
-  const ii = (d.phases.find((p) => p.name === "Phase II") || {}).awards || 0;
-  const i = (d.phases.find((p) => p.name === "Phase I") || {}).awards || 0;
-  if (i + ii > 0) {
-    const rate = Math.round((ii / (i + ii)) * 100);
-    out.push(
-      rate >= 40
-        ? `Phase II awards make up ${rate}% of this evidence, which points to work that has repeatedly cleared feasibility review rather than stalling at first-stage funding.`
-        : `Phase I dominates at ${100 - rate}% of the evidence, so much of this activity is early-stage exploration and relatively few efforts are visibly reaching Phase II here.`
-    );
-  }
-
-  const prog = d.ecosystem.progressed || [];
-  if (prog.length) {
-    const lead = prog[0];
-    out.push(
-      `${prog.length} of the firms here have carried work in this area from Phase I into Phase II, led by ${esc(titleCase(lead.company))} with ${lead.topic_progressed}. Progression within the same technology area is the clearest maturity signal the award record offers, so these are reasonable firms to examine first.`
-    );
-  }
-
-  const pts = (d.timeline.points || []).filter((p) => p.awards > 0);
-  if (pts.length >= 6) {
-    const half = Math.floor(pts.length / 2);
-    const early = pts.slice(0, half).reduce((a, p) => a + p.awards, 0);
-    const late = pts.slice(half).reduce((a, p) => a + p.awards, 0);
-    const y0 = pts[half].year, y1 = pts[pts.length - 1].year;
-    if (late > early * 1.3) {
-      out.push(`Activity is weighted towards the recent half of the record (${late} awards from ${y0}-${y1} against ${early} before), which is consistent with sustained and possibly growing interest.`);
-    } else if (early > late * 1.3) {
-      out.push(`Most of this activity predates ${y0} (${early} awards before, ${late} from ${y0}-${y1}). The available evidence points to a field that was funded more heavily in the past than recently.`);
-    } else {
-      out.push(`Award activity is spread fairly evenly across the record rather than clustering in one period, indicating steady rather than episodic funding.`);
-    }
-  }
-
-  const strength = t.awards >= 30
-    ? `Strong historical evidence: ${t.awards} closely related awards across ${t.agencies} agencies and ${t.companies} companies.`
-    : `Limited historical evidence: only ${t.awards} closely related awards were identified, so treat the reading above as tentative.`;
-  out.push(strength);
-
-  el("interpretation").innerHTML = out.map((s) => `<li>${s}</li>`).join("");
+  el("interpretation").innerHTML = (d.reading || [])
+    .map((s) => `<li>${esc(s)}</li>`).join("");
 }
 
 /* ---------- award cards ---------- */
@@ -277,6 +224,18 @@ el("awards").addEventListener("click", (e) => {
   b.textContent = clamped ? "Show full abstract" : "Hide abstract";
 });
 
+function downloadReport(ext) {
+  if (!state.data) return;
+  const link = document.createElement("a");
+  link.href = `/api/research.${ext}?q=${encodeURIComponent(state.data.query)}`;
+  link.download = "";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+el("download-pdf").addEventListener("click", () => downloadReport("pdf"));
+el("download-docx").addEventListener("click", () => downloadReport("docx"));
 el("brief").addEventListener("click", () => window.print());
 
 el("restart").addEventListener("click", () => {

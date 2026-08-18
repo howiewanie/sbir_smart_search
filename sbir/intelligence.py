@@ -216,7 +216,7 @@ def analyse(evidence: EvidenceSet, candidates: list[dict], coverage: dict,
     progressed = [c for c in companies if c["topic_progressed"] > 0]
     repeat = [c for c in companies if (c.get("total_awards") or 0) >= 3]
 
-    return {
+    payload = {
         "totals": {
             "awards": len(awards),
             "funding": round(funding, 2),
@@ -242,3 +242,115 @@ def analyse(evidence: EvidenceSet, candidates: list[dict], coverage: dict,
         "themes": _themes(awards, corpus_terms),
         "evidence": evidence.sources,
     }
+    payload["reading"] = reading(payload)
+    return payload
+
+
+def reading(analysis: dict) -> list[str]:
+    """Observations that follow from the figures.
+
+    These sentences are templates filled with counted values. They describe
+    historical funding, which is not the same as current demand — the last
+    sentence of each concentrated-agency note says so, and the page renders
+    this block separately from the evidence for that reason.
+    """
+    out: list[str] = []
+    totals = analysis.get("totals") or {}
+    n = totals.get("awards") or 0
+    agencies = analysis.get("agencies") or []
+    top = agencies[0] if agencies else None
+    second = agencies[1] if len(agencies) > 1 else None
+
+    if top and n:
+        share = round((top["awards"] / n) * 100)
+        line = (
+            f"{top['name']} accounts for {top['awards']} of the {n} awards "
+            f"examined ({share}%)"
+        )
+        line += (
+            f", ahead of {second['name']} at {second['awards']}."
+            if second else "."
+        )
+        line += (
+            f" Historical concentration of this kind suggests {top['name']} "
+            "is worth investigating as a route to market, though it does not "
+            "evidence current procurement demand."
+        )
+        out.append(line)
+
+    phases = {row["name"]: row["awards"] for row in analysis.get("phases") or []}
+    phase_i = phases.get("Phase I", 0)
+    phase_ii = phases.get("Phase II", 0)
+    if phase_i + phase_ii > 0:
+        rate = round((phase_ii / (phase_i + phase_ii)) * 100)
+        if rate >= 40:
+            out.append(
+                f"Phase II awards make up {rate}% of this evidence, which "
+                "points to work that has repeatedly cleared feasibility review "
+                "rather than stalling at first-stage funding."
+            )
+        else:
+            out.append(
+                f"Phase I dominates at {100 - rate}% of the evidence, so much "
+                "of this activity is early-stage exploration and relatively "
+                "few efforts are visibly reaching Phase II here."
+            )
+
+    progressed = (analysis.get("ecosystem") or {}).get("progressed") or []
+    if progressed:
+        lead = progressed[0]
+        out.append(
+            f"{len(progressed)} of the firms here have carried work in this "
+            f"area from Phase I into Phase II, led by {_title_case(lead['company'])} "
+            f"with {lead['topic_progressed']}. Progression within the same "
+            "technology area is the clearest maturity signal the award record "
+            "offers, so these are reasonable firms to examine first."
+        )
+
+    points = [p for p in (analysis.get("timeline") or {}).get("points") or [] if p.get("awards")]
+    if len(points) >= 6:
+        half = len(points) // 2
+        early = sum(p["awards"] for p in points[:half])
+        late = sum(p["awards"] for p in points[half:])
+        year_from = points[half]["year"]
+        year_to = points[-1]["year"]
+        if late > early * 1.3:
+            out.append(
+                f"Activity is weighted towards the recent half of the record "
+                f"({late} awards from {year_from}-{year_to} against {early} "
+                "before), which is consistent with sustained and possibly "
+                "growing interest."
+            )
+        elif early > late * 1.3:
+            out.append(
+                f"Most of this activity predates {year_from} ({early} awards "
+                f"before, {late} from {year_from}-{year_to}). The available "
+                "evidence points to a field that was funded more heavily in "
+                "the past than recently."
+            )
+        else:
+            out.append(
+                "Award activity is spread fairly evenly across the record "
+                "rather than clustering in one period, indicating steady "
+                "rather than episodic funding."
+            )
+
+    if n >= 30:
+        out.append(
+            f"Strong historical evidence: {n} closely related awards across "
+            f"{totals.get('agencies', 0)} agencies and {totals.get('companies', 0)} companies."
+        )
+    else:
+        out.append(
+            f"Limited historical evidence: only {n} closely related awards "
+            "were identified, so treat the reading above as tentative."
+        )
+    return out
+
+
+def _title_case(text: str) -> str:
+    return re.sub(
+        r"\w\S*",
+        lambda m: m.group(0)[0].upper() + m.group(0)[1:].lower(),
+        text or "",
+    )

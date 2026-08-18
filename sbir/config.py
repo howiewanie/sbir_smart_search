@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Official bulk export. Roughly 350 MB and refreshed by SBIR.gov periodically.
+# Official bulk export. Roughly 350 MB. This is a downloaded CSV, not a live
+# SBIR.gov API — that API has not been reliable. Re-point this if a working
+# API appears; until then setup/fetch pull this file.
 AWARD_DATA_URL = os.environ.get(
     "SBIR_AWARD_DATA_URL",
     "https://data.www.sbir.gov/awarddatapublic/award_data.csv",

@@ -163,9 +163,9 @@ h1, h2, h3, h4 { letter-spacing: -.02em; }
 }
 
 /* ---------- the brief ----------
-   Printing is the export path. The page already holds the analysis, so the
-   brief is the same evidence re-flowed to one page rather than a second
-   research pass: charts and interpretation stay, interaction goes. */
+   Download PDF / Word is the takeaway copy of the full report. Printing still
+   re-flows the on-screen analysis to about two sheets: charts and reading
+   stay, interaction goes. */
 
 @media print {
   @page { size: A4; margin: 11mm; }
