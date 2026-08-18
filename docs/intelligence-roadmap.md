@@ -68,7 +68,14 @@ Of the truncated awards, the term "commercial" appears only past the cutoff in 2
 cases and "phase ii" in 23.3%. SBIR abstracts are structured with the problem statement
 first and commercialisation and transition potential last, so the truncation is not
 removing random text — it is systematically removing the part that speaks to market
-application. That is precisely the content a strategy product needs.
+application.
+
+> **Superseded by Experiment 1 (§8).** The inference drawn here — that the discarded tail
+> therefore carries retrievable signal — was tested and is wrong. Widening the window to
+> 256 tokens made retrieval *worse* on every metric. The tail is largely boilerplate that
+> every SBIR abstract shares, so including it makes awards look more alike rather than
+> more distinguishable. The truncation remains a real limit on what can be *displayed*;
+> it is not a retrieval deficiency.
 
 ### 2.3 Lexical retrieval is not the missing piece
 
@@ -413,6 +420,37 @@ so recall is measured against a realistic amount of distractor material.
 Metric: Recall@50 primary, nDCG@10 secondary. Promote to a full-corpus build only if the
 sample shows a material gain. If 256 tokens captures most of it, prefer that over chunking
 — chunking roughly 2.5×'s the vector count and complicates every downstream id join.
+
+#### Result, 2026-08-18: hypothesis rejected, keep 128
+
+50,000-award stratified sample containing all 1,651 graded awards.
+
+| Window | Recall@10 | Recall@50 | nDCG@10 | P@10 | MRR | Build | Rate |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 64 | 0.2823 | 0.7439 | 0.8594 | 0.7875 | 0.9792 | 2.5 min | 339/s |
+| 96 | 0.2974 | 0.7870 | 0.8745 | 0.8083 | 0.9792 | 3.3 min | 255/s |
+| **128** | **0.3122** | **0.8116** | **0.9085** | **0.8542** | **1.0000** | 4.2 min | 196/s |
+| 256 | 0.2900 | 0.7632 | 0.8729 | 0.8000 | 0.9514 | 10.4 min | 80/s |
+
+128 tokens is the best setting on every metric, and the curve is a clean inverted U rather
+than a plateau. Widening to 256 costs 2.5× the build time and loses 0.048 recall@50;
+narrowing to 96 loses 0.025 and to 64 loses 0.068.
+
+The explanation is that `all-MiniLM-L6-v2` mean-pools over the window. Past roughly 128
+tokens an SBIR abstract turns into commercialisation and transition boilerplate that every
+award shares, so the extra tokens pull each vector towards the corpus mean and make awards
+harder to tell apart. More text is not more signal when the additional text is common to
+everything.
+
+The chunking variant was not run. It was worth trying only if a longer window had helped,
+and it did not.
+
+**Consequence for the roadmap.** Two of the four planned experiments are now closed by
+measurement: reranking, because the ranking is already saturated (§6), and the embedding
+window, because the current setting is optimal. The remaining recall gap is not explained
+by either. The live candidates are company-level diversity (§8.3) and query understanding
+(§8.4), and the most informative unexplored option is a different embedding model, since
+the model — not the window — is now the binding constraint.
 
 **Experiment 2 — a calibrated relevance gate.** The obstacle in §2.1. A cross-encoder over
 the top ~200 candidates produces a query-independent relevance decision in a way raw cosine
