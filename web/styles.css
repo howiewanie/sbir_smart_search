@@ -168,37 +168,77 @@ h1, h2, h3, h4 { letter-spacing: -.02em; }
    research pass: charts and interpretation stay, interaction goes. */
 
 @media print {
-  @page { size: A4; margin: 14mm; }
+  @page { size: A4; margin: 11mm; }
 
-  body { background: #fff; font-size: 9.5pt; line-height: 1.42; }
+  body { background: #fff; font-size: 9pt; line-height: 1.38; }
   .wrap { width: 100%; }
 
-  .topbar, .ask, .loading, .actions, .no-print, .site-footer,
-  .examples, #panel-themes .hint, .abstract button { display: none !important; }
+  /* Chrome, the input, the loading state and every control leave. What remains
+     is the analysis at a size someone would actually read, trimmed to about
+     two sheets rather than squeezed onto one. */
+  .topbar, .ask, .loading, .actions, .no-print, .site-footer, .examples,
+  .hint, .abstract button, .tag.related { display: none !important; }
 
   .report { padding: 0; }
-  .panel, .figure, .hit { box-shadow: none; border-color: #d5dae1; break-inside: avoid; }
-  .panel { padding: 10px 12px; margin-top: 9px; }
+  /* Panels are allowed to split across sheets. Forbidding it pushes a tall
+     section wholesale onto the next page and leaves half a sheet blank, which
+     is what turned this into a four-page document. Individual cards still hold
+     together. */
+  .panel { box-shadow: none; }
+  .figure, .hit, .firm, .chart-box { box-shadow: none; break-inside: avoid; }
+  .panel { padding: 9px 11px; margin-top: 8px; border-color: #d5dae1; }
+  .panel h3 { font-size: 8pt; margin-bottom: 7px; letter-spacing: .06em; }
+  .panel h4 { font-size: 8pt; margin-bottom: 5px; }
 
-  .orient h2 { font-size: 17pt; margin-bottom: 4px; }
-  .lede { font-size: 10pt; margin-bottom: 10px; color: #000; }
-  .figures { gap: 7px; }
-  .figure { padding: 7px 9px; }
-  .figure b { font-size: 14pt; }
+  .orient { margin-bottom: 10px; }
+  .orient h2 { font-size: 16pt; margin-bottom: 4px; }
+  .lede { font-size: 9.8pt; margin-bottom: 9px; color: #000; max-width: none; }
+  .basis { font-size: 7pt; margin-top: 6px; }
+
+  /* An A4 page is about 707 CSS pixels wide, which trips the 880px mobile
+     breakpoint and collapses every grid to one column. Restate the columns
+     here or the brief prints as a tall single-file stack. */
+  .figures { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .signal-grid, .eco-grid { grid-template-columns: 1fr 1fr; }
+
+  .figure { padding: 7px 9px; border-color: #d5dae1; }
+  .figure b { font-size: 13pt; }
   .figure span { font-size: 7pt; }
 
-  .panel h3 { font-size: 8.5pt; margin-bottom: 7px; }
   .signal-grid { gap: 12px; }
-  .cols { height: 60px; }
+  .cols { height: 44px; gap: 2px; }
+  .col-tick { font-size: 5.5pt; height: 8px; margin-top: 2px; }
+  .bar-row { margin-bottom: 4px; font-size: 7.6pt; grid-template-columns: minmax(0, 110px) 1fr auto; gap: 8px; }
+  .bar-track { height: 7px; }
+  .bar-value { font-size: 7.2pt; }
+  .chart-box:nth-child(2) .bar-row:nth-child(n + 6) { display: none; }
 
-  /* Only the strongest evidence belongs in a one-page brief. */
-  .hits > .hit:nth-child(n + 8) { display: none; }
-  .hit { padding: 7px 9px; }
-  .hit h4 { font-size: 9.5pt; }
+  .themes { gap: 5px; }
+  .theme { font-size: 7.6pt; padding: 2px 8px; }
+
+  .eco-grid { gap: 16px; }
+  .firm { padding: 4px 0; }
+  .firm b { font-size: 8.2pt; }
+  .firm span { font-size: 7.2pt; }
+  #recurring .firm:nth-child(n + 6), #progressed .firm:nth-child(n + 6) { display: none; }
+
+  /* Only the strongest evidence belongs in a brief, each with enough of the
+     abstract to justify why it is cited. */
+  .hits { gap: 6px; }
+  .hits > .hit:nth-child(n + 9) { display: none; }
+  .hit { padding: 6px 9px; border-color: #d5dae1; }
+  .hit h4 { font-size: 8.4pt; line-height: 1.3; }
+  .hit .company { font-size: 7.8pt; margin-top: 3px; }
+  .meta { margin-top: 4px; gap: 5px; }
+  .tag { font-size: 6.8pt; padding: 1px 6px; }
+  .abstract { margin-top: 5px; font-size: 7.6pt; }
   .abstract .clamp { -webkit-line-clamp: 2; }
 
-  .eco-grid { gap: 14px; }
   .interp { background: #fbfaf7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .interp ul { padding-left: 15px; }
+  .interp li { margin-bottom: 5px; font-size: 8.4pt; }
+  .interp li:last-child { font-size: 8pt; }
 
   a[href]::after { content: ""; }
+  a { color: #000; }
 }

@@ -36,8 +36,24 @@ class EvidenceSet:
         }
 
 
-def _project_key(award: dict) -> tuple[str, str]:
+ABSTRACT_KEY_CHARS = 240
+
+
+def _title_key(award: dict) -> tuple[str, str]:
     return award.get("company", ""), award.get("title", "").strip().lower()
+
+
+def _abstract_key(award: dict) -> tuple[str, str] | None:
+    """Second identity for a project, based on how it describes itself.
+
+    Firms often re-file continuing work under a reworded title while reusing the
+    abstract verbatim, so matching titles alone lets one project occupy several
+    slots. Comparing the opening of the abstract catches those.
+    """
+    abstract = " ".join((award.get("abstract") or "").split()).lower()
+    if len(abstract) < 80:
+        return None
+    return award.get("company", ""), abstract[:ABSTRACT_KEY_CHARS]
 
 
 def select(candidates: list[dict], size: int = config.EVIDENCE_SIZE,
@@ -56,18 +72,27 @@ def select(candidates: list[dict], size: int = config.EVIDENCE_SIZE,
     set, the best remaining awards are added back. A thin field should return
     what exists, not an artificially short page.
     """
-    best: dict[tuple[str, str], dict] = {}
+    deduped: list[dict] = []
+    by_title: dict[tuple[str, str], dict] = {}
+    by_abstract: dict[tuple[str, str], dict] = {}
     duplicates = 0
 
     for award in candidates:
-        key = _project_key(award)
-        existing = best.get(key)
+        title_key = _title_key(award)
+        abstract_key = _abstract_key(award)
+        existing = by_title.get(title_key)
+        if existing is None and abstract_key is not None:
+            existing = by_abstract.get(abstract_key)
+
         if existing is None:
             item = dict(award)
             item["related_awards"] = 1
             item["related_funding"] = float(award.get("amount") or 0.0)
             item["phases_seen"] = [award.get("phase")] if award.get("phase") else []
-            best[key] = item
+            deduped.append(item)
+            by_title[title_key] = item
+            if abstract_key is not None:
+                by_abstract[abstract_key] = item
             continue
 
         duplicates += 1
@@ -76,8 +101,10 @@ def select(candidates: list[dict], size: int = config.EVIDENCE_SIZE,
         phase = award.get("phase")
         if phase and phase not in existing["phases_seen"]:
             existing["phases_seen"].append(phase)
-
-    deduped = list(best.values())
+        # Register the alternate spelling so a third filing collapses too.
+        by_title.setdefault(title_key, existing)
+        if abstract_key is not None:
+            by_abstract.setdefault(abstract_key, existing)
 
     selected: list[dict] = []
     overflow: list[dict] = []
